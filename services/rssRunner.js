@@ -149,7 +149,7 @@ function startRssRunner(client, { intervalMs = DEFAULT_INTERVAL_MS } = {}) {
   if (started) return;
   started = true;
 
-  log.info(`📰 RssRunner démarré (interval ${intervalMs}ms)`);
+  log.info(`RssRunner démarré (interval ${intervalMs}ms)`);
   runCycle(client);
   const timer = setInterval(() => runCycle(client), intervalMs);
   timer.unref?.();

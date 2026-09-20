@@ -44,7 +44,7 @@ class ReminderSystem {
      * Initialise le système de rappels
      */
     initialize() {
-        log.info('🔔 Initialisation du système de rappels...');
+        log.info('Initialisation du système de rappels...');
         
         // Charger et programmer tous les rappels existants
         this.loadAndScheduleAllReminders();
@@ -54,7 +54,7 @@ class ReminderSystem {
             this.cleanupExpiredReminders();
         }, 60 * 60 * 1000); // 1 heure
         
-        log.info('✅ Système de rappels initialisé');
+        log.info('Système de rappels initialisé');
     }
 
     /**
@@ -69,7 +69,7 @@ class ReminderSystem {
             return;
         }
 
-        log.info(`📅 Programmation des rappels pour: ${eventData.title}`);
+        log.info(`Programmation des rappels pour: ${eventData.title}`);
 
         // Programmer chaque type de rappel
         this.reminderIntervals.forEach(interval => {
@@ -147,7 +147,7 @@ class ReminderSystem {
             // Envoyer aussi un rappel dans le canal de l'événement
             await this.sendChannelReminder(currentEvent, interval);
 
-            log.info(`✅ Rappel envoyé pour ${currentEvent.title} (${interval.label}) à ${participantsToRemind.length} participants`);
+            log.info(`Rappel envoyé pour ${currentEvent.title} (${interval.label}) à ${participantsToRemind.length} participants`);
 
         } catch (error) {
             log.error('Erreur lors de l\'envoi du rappel:', error);
@@ -333,7 +333,7 @@ class ReminderSystem {
             });
         });
 
-        log.info(`📅 ${scheduledCount} événements programmés pour les rappels`);
+        log.info(`${scheduledCount} événements programmés pour les rappels`);
     }
 
     /**
@@ -397,7 +397,7 @@ class ReminderSystem {
         // Programmer les nouveaux rappels
         this.scheduleReminders(eventData);
         
-        log.info(`🔄 Rappels mis à jour pour ${eventData.title}`);
+        log.info(`Rappels mis à jour pour ${eventData.title}`);
     }
 
     // Fonctions utilitaires

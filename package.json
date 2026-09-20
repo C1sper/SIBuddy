@@ -1,7 +1,7 @@
 {
-  "name": "3sib-discord-bot",
+  "name": "4sib-discord-bot",
   "version": "1.0.0",
-  "description": "Bot Discord pour le serveur 3SIB",
+  "description": "Bot Discord pour le serveur 4SIB",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -15,9 +15,9 @@
     "discord",
     "bot",
     "javascript",
-    "3sib"
+    "4sib"
   ],
-  "author": "3SIB Team",
+  "author": "4SIB Team",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.12.2",
@@ -30,5 +30,15 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "data/*",
+      "data-backups/*",
+      "tests/*",
+      "node_modules/*"
+    ],
+    "ext": "js,json",
+    "delay": "1000"
   }
 }

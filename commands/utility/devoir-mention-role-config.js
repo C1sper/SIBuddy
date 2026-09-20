@@ -64,7 +64,7 @@ module.exports = {
       )
       .setTimestamp()
       .setFooter({
-        text: 'Bot Discord 3SIB', // je vais vraiment finir par mettre un easter egg à cet endroit (et à automatiser ça)
+        text: 'Bot Discord 4SIB', // je vais vraiment finir par mettre un easter egg à cet endroit (et à automatiser ça)
         iconURL: interaction.client.user.displayAvatarURL()
       })
 

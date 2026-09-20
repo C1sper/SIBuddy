@@ -15,7 +15,44 @@
 // error et warn partent sur stderr, info et debug sur stdout : les erreurs
 // restent isolables (`docker compose logs 2>/dev/null` ne montre que le reste).
 
+const fs = require('fs');
+
 const LEVELS = { silent: -1, error: 0, warn: 1, info: 2, debug: 3 };
+
+// Descripteurs standard. On écrit dedans avec fs.writeSync plutôt qu'avec
+// process.stdout.write : quand la sortie est un tube (docker logs, `| tee`,
+// nodemon), Node bufferise les écritures et un process.exit() immédiat — celui
+// du handler uncaughtException ou de l'arrêt sur SIGTERM — les perd. Le bot
+// mourait alors sans le moindre message, en local comme dans le conteneur.
+const STDOUT_FD = 1;
+const STDERR_FD = 2;
+
+function writeLine(fd, line) {
+  const stream = fd === STDERR_FD ? process.stderr : process.stdout;
+
+  // Terminal : on passe par process.stdout/stderr. Node y convertit le texte
+  // vers l'encodage de la console — indispensable sur la console Windows, où
+  // l'UTF-8 brut s'afficherait en mojibake ("événement" -> "├®v├®nement").
+  if (stream && stream.isTTY) {
+    try {
+      stream.write(line);
+    } catch { /* terminal fermé : on abandonne cette ligne */ }
+    return;
+  }
+
+  // Tube ou fichier (docker logs, nodemon, redirection) : fs.writeSync
+  // garantit que rien n'est perdu si le process s'arrête juste après, ce que
+  // font les handlers uncaughtException et SIGTERM.
+  try {
+    fs.writeSync(fd, line);
+  } catch (e) {
+    // EAGAIN : tube momentanément plein, une seule reprise suffit.
+    // EPIPE : la sortie est fermée, il n'y a plus rien à faire.
+    if (e && e.code === 'EAGAIN') {
+      try { fs.writeSync(fd, line); } catch { /* on abandonne cette ligne */ }
+    }
+  }
+}
 const DEFAULT_LEVEL = 'info';
 
 // Lu à chaque appel (et non au chargement du module) pour que le niveau
@@ -61,14 +98,13 @@ function emit(level, scope, args) {
   const line = `${prefix}${parts.join(' ')}`;
 
   // error et warn sur stderr, le reste sur stdout.
-  const stream = LEVELS[level] <= LEVELS.warn ? process.stderr : process.stdout;
-  stream.write(`${line}\n`);
+  writeLine(LEVELS[level] <= LEVELS.warn ? STDERR_FD : STDOUT_FD, `${line}\n`);
 
   // La stack n'est conservée que pour les erreurs, et seulement en debug :
   // en exploitation normale le message suffit, en investigation on veut tout.
   if (level === 'error' && isEnabled('debug')) {
     for (const arg of args) {
-      if (arg instanceof Error && arg.stack) process.stderr.write(`${arg.stack}\n`);
+      if (arg instanceof Error && arg.stack) writeLine(STDERR_FD, `${arg.stack}\n`);
     }
   }
 }

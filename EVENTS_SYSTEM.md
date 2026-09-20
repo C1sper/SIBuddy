@@ -258,4 +258,4 @@ data/global/events-settings.json     # Réglages partagés (limites, rappels par
 
 ---
 
-*Système développé pour le bot Discord 3SIB - Version 1.0*
+*Système développé pour le bot Discord 4SIB - Version 1.0*

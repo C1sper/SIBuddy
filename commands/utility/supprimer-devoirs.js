@@ -72,7 +72,7 @@ module.exports = {
       })
       .setTimestamp()
       .setFooter({
-        text: 'Bot Discord 3SIB',
+        text: 'Bot Discord 4SIB',
         iconURL: interaction.client.user.displayAvatarURL()
       })
 

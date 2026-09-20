@@ -4,6 +4,9 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('./utils/logger');
+
+const log = createLogger('bot');
 
 // 1) Création du client avec les intents nécessaires
 const client = new Client({
@@ -85,9 +88,6 @@ process.on('uncaughtException', error => {
 
 // 5) Arrêt propre (Docker envoie SIGTERM) : on sauvegarde les données en attente
 const statsStore = require('./services/statsStore');
-const { createLogger } = require('./utils/logger');
-
-const log = createLogger('bot');
 let shuttingDown = false;
 function gracefulShutdown(signal) {
   if (shuttingDown) return;

@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    container_name: 3sib-discord-bot
+    container_name: 4sib-discord-bot
     restart: unless-stopped
     env_file:
       - .env
@@ -18,6 +18,11 @@ services:
       # volume supplémentaire n'est à ajouter quand le bot rejoint un serveur.
       # Le dossier hôte doit être accessible en écriture à l'UID 1000
       # (utilisateur "node" du conteneur), y compris pour créer des sous-dossiers.
+      #
+      # NE PAS renommer ce chemin en "4SI2" pour l'harmoniser avec le nom du
+      # bot : c'est un chemin RÉEL sur le NAS. Le changer sans déplacer le
+      # dossier au préalable ferait démarrer le bot sur un répertoire vide,
+      # comme s'il avait perdu tous les devoirs.
       - /volume2/docker/ESGI-3SI2-TEAM2/data:/app/data
     stop_grace_period: 10s
     # Rotation des logs : sans limite, le driver json-file par défaut grossit
