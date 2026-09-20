@@ -35,7 +35,7 @@ class RecurringEventsManager {
             this.processRecurringEvents();
         }, 60 * 60 * 1000); // 1 heure
         
-        log.info('🔄 Gestionnaire d\'événements récurrents initialisé');
+        log.info('Gestionnaire d\'événements récurrents initialisé');
     }
 
     /**
@@ -70,7 +70,7 @@ class RecurringEventsManager {
 
             if (processedCount > 0) {
                 this.saveEventsConfig(eventsConfig);
-                log.info(`🔄 ${processedCount} nouvelles occurrences d'événements récurrents créées`);
+                log.info(`${processedCount} nouvelles occurrences d'événements récurrents créées`);
             }
 
         } catch (error) {
@@ -228,7 +228,7 @@ class RecurringEventsManager {
                 this.client.reminderSystem.scheduleReminders(newEvent);
             }
 
-            log.info(`🔄 Nouvelle occurrence créée: ${newEvent.title} le ${nextDate.toLocaleDateString('fr-FR')}`);
+            log.info(`Nouvelle occurrence créée: ${newEvent.title} le ${nextDate.toLocaleDateString('fr-FR')}`);
             
             return newEvent;
 

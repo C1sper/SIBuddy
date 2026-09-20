@@ -98,7 +98,7 @@ async function deliverDM(client, reminder) {
   }
 
   await user.send({ embeds: [buildDMEmbed(reminder)] });
-  log.info(`📩 Rappel DM (${reminder.kind}) envoyé à ${user.tag} pour ${reminder.title}`);
+  log.info(`Rappel DM (${reminder.kind}) envoyé à ${user.tag} pour ${reminder.title}`);
 }
 
 async function deliverChannel(client, reminder) {
@@ -141,7 +141,7 @@ async function deliverChannel(client, reminder) {
 }
 
 function startRemindersRunner(client, { intervalMs = 30_000 } = {}) {
-  log.info(`⏱️ RemindersRunner démarré (interval ${intervalMs}ms)`);
+  log.info(`RemindersRunner démarré (interval ${intervalMs}ms)`);
 
   setInterval(() => {
     try {

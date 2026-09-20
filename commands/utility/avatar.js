@@ -52,7 +52,7 @@ module.exports = {
                 { name: '📅 Compte créé le', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:F>`, inline: false }
             )
             .setFooter({ 
-                text: 'Bot Discord 3SIB', 
+                text: 'Bot Discord 4SIB', 
                 iconURL: interaction.client.user.displayAvatarURL() 
             })
             .setTimestamp();

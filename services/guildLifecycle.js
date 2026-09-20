@@ -23,7 +23,7 @@ function ensureGuildInitialized(guildId) {
   ensureGuildConfig(id);
   categoriesService.listCategories(id); // crée les catégories par défaut au besoin
 
-  if (isNew) log.info(`🗂️ Données initialisées pour le serveur ${id}.`);
+  if (isNew) log.info(`Données initialisées pour le serveur ${id}.`);
   return true;
 }
 

@@ -1,4 +1,4 @@
-# 3SIB Discord Bot
+# 4SIB Discord Bot
 
 Bot Discord de classe développé en JavaScript (discord.js v14) : suivi des
 devoirs et dates importantes, rappels automatiques, flux RSS, événements
@@ -207,7 +207,7 @@ Le bot écrit ses logs sur la sortie standard, une ligne par événement :
 
 ```
 2026-09-08 10:23:45  INFO  [bot] 27 commande(s) chargée(s).
-2026-09-08 10:24:02  INFO  [interactions] /ping — arthus dans 3SIB (48ms)
+2026-09-08 10:24:02  INFO  [interactions] /ping — arthus dans 4SIB (48ms)
 2026-09-08 10:24:19  WARN  [rssRunner] Salon indisponible pour le flux Actus
 2026-09-08 10:25:01  ERROR [DevoirBoard] Envoi impossible: Missing Permissions
 ```

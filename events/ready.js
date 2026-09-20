@@ -19,10 +19,10 @@ module.exports = {
   name: Events.ClientReady,
   once: true,
   execute(client) {
-    log.info(`✅ Bot connecté en tant que ${client.user.tag}!`);
-    log.info(`🚀 Bot actif sur ${client.guilds.cache.size} serveur(s)`);
+    log.info(`Bot connecté en tant que ${client.user.tag}!`);
+    log.info(`Bot actif sur ${client.guilds.cache.size} serveur(s)`);
 
-    client.user.setActivity('3SIB Server', { type: 3 }); // WATCHING
+    client.user.setActivity('4SIB Server', { type: 3 }); // WATCHING
 
     // Le event Events.ClientReady peut théoriquement refeu (reconnect) selon les
     // versions de discord.js ; { once: true } le garantit déjà côté index.js,
@@ -32,7 +32,7 @@ module.exports = {
 
     // Prépare data/guilds/<guildId>/ pour chaque serveur connu (idempotent).
     const initialized = ensureAllGuildsInitialized(client);
-    log.info(`🗂️ Données prêtes pour ${initialized} serveur(s) — schéma v${getSchemaVersion()}.`);
+    log.info(`Données prêtes pour ${initialized} serveur(s) — schéma v${getSchemaVersion()}.`);
 
     const schemaVersion = getSchemaVersion();
     if (schemaVersion < SCHEMA_VERSION) {
@@ -44,7 +44,7 @@ module.exports = {
 
     // Recalcule les rappels persistants de chaque serveur
     const { devoirsCount, createdCount } = devoirsService.rebuildAllReminders();
-    log.info(`✅ Reminders JSON rebuild: ${createdCount} rappel(s) pending créé(s) pour ${devoirsCount} élément(s).`);
+    log.info(`Reminders JSON rebuild: ${createdCount} rappel(s) pending créé(s) pour ${devoirsCount} élément(s).`);
 
     // Runner persistant (salons + DM)
     startRemindersRunner(client, { intervalMs: 30_000 });
