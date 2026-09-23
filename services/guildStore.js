@@ -167,26 +167,93 @@ function writeGlobalJson(fileName, data) {
 // Version du schéma
 // ---------------------------------------------------------------------------
 
+// Fichiers du schéma v1, restés à la racine de data/. Leur simple présence
+// avec du contenu signifie qu'une migration est encore à faire.
+const LEGACY_FILES = [
+  'devoirs.json',
+  'devoirs-archives.json',
+  'devoirs-config.json',
+  'reminders.json',
+  'guild-config.json',
+  'stats.json',
+  'rss-config.json',
+  'rss-state.json',
+  'events-config.json',
+];
+
+/**
+ * Y a-t-il des données au format v1 à la racine de data/ ?
+ * Un fichier vide (`[]`, `{}`) ne compte pas : il ne reste rien à migrer.
+ */
+function hasLegacyData() {
+  for (const fileName of LEGACY_FILES) {
+    const filePath = path.join(DATA_DIR, fileName);
+    if (!fs.existsSync(filePath)) continue;
+
+    const content = readJsonAt(filePath, null);
+    if (Array.isArray(content) && content.length > 0) return true;
+    if (content && !Array.isArray(content) && typeof content === 'object'
+        && Object.keys(content).length > 0) return true;
+  }
+  return false;
+}
+
 function readSchema() {
   const data = readJsonAt(SCHEMA_PATH, { version: 1 });
   const version = Number(data?.version);
-  return { version: Number.isFinite(version) ? version : 1 };
+  return {
+    version: Number.isFinite(version) ? version : 1,
+    // Renseigné uniquement par scripts/migrate-data-v2.js. Distingue « le
+    // schéma est à jour parce que la migration a tourné » de « le bot a
+    // tamponné le schéma sur une installation vierge ».
+    migratedAt: typeof data?.migratedAt === 'string' ? data.migratedAt : null,
+  };
+}
+
+/**
+ * La migration a-t-elle réellement eu lieu ?
+ * `migratedAt` est le signal explicite. Pour les installations migrées avant
+ * l'introduction de ce champ, la présence de fichiers de devoirs ou de rappels
+ * dans un dossier de serveur fait foi.
+ */
+function hasBeenMigrated() {
+  if (readSchema().migratedAt) return true;
+  return listGuildIds().some(
+    guildId => guildFileExists(guildId, FILES.DEVOIRS) || guildFileExists(guildId, FILES.REMINDERS),
+  );
 }
 
 function getSchemaVersion() {
   return readSchema().version;
 }
 
-function writeSchemaVersion(version) {
-  return writeJsonAt(SCHEMA_PATH, { version, updatedAt: new Date().toISOString() });
+function writeSchemaVersion(version, extra = {}) {
+  return writeJsonAt(SCHEMA_PATH, {
+    version,
+    updatedAt: new Date().toISOString(),
+    ...extra,
+  });
 }
 
 /**
- * Marque le stockage comme étant au schéma courant. Utilisé par la migration
- * et par l'initialisation d'une installation vierge.
+ * Marque le stockage au schéma courant — mais UNIQUEMENT s'il n'y a rien à
+ * migrer.
+ *
+ * Sans cette précaution, démarrer le bot avant d'avoir lancé la migration
+ * tamponnait data/schema.json en v2 alors que les devoirs étaient toujours
+ * dans les anciens fichiers. Le script de migration considérait ensuite le
+ * travail comme fait et refusait de s'exécuter : les données restaient
+ * orphelines, et le tableau vide.
+ *
+ * Retourne la version effective, pour que l'appelant puisse avertir.
  */
 function ensureSchemaVersion() {
-  if (getSchemaVersion() < SCHEMA_VERSION) writeSchemaVersion(SCHEMA_VERSION);
+  const current = getSchemaVersion();
+  if (current >= SCHEMA_VERSION) return current;
+
+  if (hasLegacyData()) return current; // migration encore nécessaire
+
+  writeSchemaVersion(SCHEMA_VERSION);
   return SCHEMA_VERSION;
 }
 
@@ -209,6 +276,9 @@ module.exports = {
   listGuildIds,
   readGlobalJson,
   writeGlobalJson,
+  LEGACY_FILES,
+  hasLegacyData,
+  hasBeenMigrated,
   readSchema,
   getSchemaVersion,
   writeSchemaVersion,

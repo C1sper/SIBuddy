@@ -8,7 +8,7 @@ const { startRecurringEvents } = require('../services/recurringEvents');
 const { startEventReminders } = require('../services/reminderSystem');
 const { startCooldownCleanup } = require('../services/feurEngine');
 const { ensureAllGuildsInitialized } = require('../services/guildLifecycle');
-const { getSchemaVersion, SCHEMA_VERSION } = require('../services/guildStore');
+const { getSchemaVersion, SCHEMA_VERSION, hasLegacyData } = require('../services/guildStore');
 
 const { createLogger } = require('../utils/logger');
 
@@ -36,10 +36,15 @@ module.exports = {
 
     const schemaVersion = getSchemaVersion();
     if (schemaVersion < SCHEMA_VERSION) {
-      log.warn(
-        `Schéma de données v${schemaVersion} détecté (attendu v${SCHEMA_VERSION}). ` +
-        'Lance `node scripts/migrate-data-v2.js --dry-run` puis la migration réelle.',
-      );
+      log.warn('='.repeat(70));
+      log.warn(`Schéma de données v${schemaVersion} détecté (attendu v${SCHEMA_VERSION}).`);
+      if (hasLegacyData()) {
+        log.warn('Des devoirs/rappels sont encore dans les anciens fichiers data/*.json');
+        log.warn('et ne sont PAS visibles par le bot tant que la migration n\'a pas tourné :');
+        log.warn('  node scripts/migrate-data-v2.js --dry-run');
+        log.warn('  node scripts/migrate-data-v2.js --guild-id <ID>');
+      }
+      log.warn('='.repeat(70));
     }
 
     // Recalcule les rappels persistants de chaque serveur
