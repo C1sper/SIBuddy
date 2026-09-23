@@ -25,11 +25,14 @@ services:
       # comme s'il avait perdu tous les devoirs.
       - /volume2/docker/ESGI-3SI2-TEAM2/data:/app/data
     stop_grace_period: 10s
-    # Rotation des logs : sans limite, le driver json-file par défaut grossit
-    # indéfiniment et peut saturer le disque du NAS.
-    # 3 fichiers de 10 Mo = 30 Mo d'historique conservé au maximum.
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    # PAS de bloc "logging:" ici, volontairement.
+    #
+    # Une rotation par conteneur (json-file + max-size/max-file) vide l'onglet
+    # Journal de Container Manager sur Synology DSM : `docker logs` continue de
+    # fonctionner en SSH, mais l'interface n'affiche plus rien. Vérifié sur ce
+    # NAS — retirer ce bloc rétablit l'affichage.
+    #
+    # Le volume de logs de ce bot est de l'ordre de quelques Mo par an au
+    # niveau INFO ; une rotation n'est donc pas nécessaire. Si elle le devient,
+    # la configurer au niveau du démon plutôt qu'ici :
+    #   /var/packages/ContainerManager/etc/dockerd.json

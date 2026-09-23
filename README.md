@@ -229,7 +229,26 @@ docker compose logs | grep 'ERROR'         # erreurs seulement
 docker compose logs | grep '\[rssRunner\]'  # un module
 ```
 
-La rotation est configurée dans `docker-compose.yml` (3 fichiers de 10 Mo).
+### Rotation des logs
+
+Aucune rotation n'est configurée dans `docker-compose.yml`, **volontairement** :
+un bloc `logging:` par conteneur vide l'onglet Journal de Container Manager sur
+Synology DSM (`docker logs` continue pourtant de fonctionner en SSH).
+
+Ce n'est pas gênant : au niveau `info`, ce bot produit de l'ordre de 2 à 8 Mo
+de logs par an. Si une rotation devient nécessaire, la configurer au niveau du
+démon — ce qui n'affecte pas l'affichage DSM :
+
+```bash
+# Synology DSM 7 (Container Manager)
+sudo vi /var/packages/ContainerManager/etc/dockerd.json
+```
+```json
+{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+```
+```bash
+sudo synosystemctl restart pkgctl-ContainerManager
+```
 
 ## Tests
 
