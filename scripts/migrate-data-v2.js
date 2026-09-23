@@ -26,10 +26,14 @@ const { readJsonAt } = require('../services/dataStore');
 
 const DATA_DIR = guildStore.DATA_DIR;
 const PROJECT_ROOT = path.join(__dirname, '..');
-// Les sauvegardes se placent à côté du dossier data/ utilisé — donc à la
-// racine du projet en temps normal, et dans le dossier de test si
-// BOT_DATA_DIR est défini.
-const BACKUP_ROOT = path.join(path.dirname(DATA_DIR), 'data-backups');
+// Les sauvegardes vivent DANS le dossier data/, et non à côté.
+//
+// En conteneur, seul /app/data est monté : une sauvegarde placée dans
+// /app/data-backups partait avec le conteneur au premier recreate, c'est-à-dire
+// exactement au moment où on en aurait eu besoin. À l'intérieur du volume,
+// elle est persistée que la migration soit lancée sur l'hôte ou via
+// `docker exec`.
+const BACKUP_ROOT = path.join(DATA_DIR, 'backups');
 const FILES = guildStore.FILES;
 const GLOBAL_FILES = guildStore.GLOBAL_FILES;
 
@@ -509,8 +513,18 @@ function createBackup() {
   const target = uniqueBackupDir();
   fs.mkdirSync(target, { recursive: true });
 
+  // Copie entrée par entrée plutôt que d'un bloc : les sauvegardes vivant
+  // désormais DANS data/, fs.cpSync refuserait de copier un dossier vers son
+  // propre sous-dossier (EINVAL), filtre ou pas.
   if (fs.existsSync(DATA_DIR)) {
-    fs.cpSync(DATA_DIR, path.join(target, 'data'), { recursive: true });
+    const dataTarget = path.join(target, 'data');
+    fs.mkdirSync(dataTarget, { recursive: true });
+
+    for (const entry of fs.readdirSync(DATA_DIR)) {
+      const source = path.join(DATA_DIR, entry);
+      if (source === BACKUP_ROOT) continue; // on ne sauvegarde pas les sauvegardes
+      fs.cpSync(source, path.join(dataTarget, entry), { recursive: true });
+    }
   }
 
   // Fichiers legacy encore présents à la racine du dépôt.
@@ -519,8 +533,11 @@ function createBackup() {
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(target, `root-${fileName}`));
   }
 
-  // Vérifie que la sauvegarde est réellement lisible avant d'aller plus loin.
-  const copied = fs.readdirSync(target);
+  // Vérifie que la sauvegarde contient réellement quelque chose avant d'aller
+  // plus loin : une sauvegarde vide ne protège de rien.
+  const copied = fs.existsSync(path.join(target, 'data'))
+    ? fs.readdirSync(path.join(target, 'data'))
+    : [];
   if (copied.length === 0) throw new Error('la sauvegarde est vide');
 
   return target;

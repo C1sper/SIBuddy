@@ -197,8 +197,9 @@ node scripts/migrate-data-v2.js --guild-id <DISCORD_GUILD_ID> --dry-run
 node scripts/migrate-data-v2.js --guild-id <DISCORD_GUILD_ID>
 ```
 
-La migration crée une sauvegarde complète dans `data-backups/migration-<date>/`
-(jamais écrasée), valide les données relues, est idempotente, et **ne supprime
+La migration crée une sauvegarde complète dans `data/backups/migration-<date>/`
+(jamais écrasée ; à l'intérieur du volume, donc conservée aussi quand la
+migration est lancée depuis le conteneur), valide les données relues, est idempotente, et **ne supprime
 jamais les anciens fichiers**.
 
 ## Logs
