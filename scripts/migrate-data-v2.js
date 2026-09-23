@@ -624,10 +624,35 @@ function main() {
   // --- Idempotence ---------------------------------------------------------
   const currentVersion = guildStore.getSchemaVersion();
   if (currentVersion >= guildStore.SCHEMA_VERSION) {
-    title('Migration Data v1 → v2');
-    log(`\n✅ Les données sont déjà au schéma v${currentVersion}. Aucune migration nécessaire.`);
-    log('   (Le fichier data/schema.json fait foi. Rien n\'a été modifié.)\n');
-    return;
+    // Cas normal : la migration a déjà été faite, ou il n'y a rien à migrer.
+    if (guildStore.hasBeenMigrated() || !guildStore.hasLegacyData()) {
+      title('Migration Data v1 → v2');
+      log(`\n✅ Les données sont déjà au schéma v${currentVersion}. Aucune migration nécessaire.`);
+      log('   (Le fichier data/schema.json fait foi. Rien n\'a été modifié.)\n');
+      return;
+    }
+
+    // Cas anormal : le schéma annonce v2 mais il reste des données à plat.
+    // Cela arrivait quand le bot était démarré avant la migration : il
+    // tamponnait le schéma sans rien déplacer. On ne refuse plus en silence.
+    if (!options.force) {
+      title('Migration Data v1 → v2  —  INCOHÉRENCE DÉTECTÉE');
+      log(`\ndata/schema.json annonce la v${currentVersion}, mais des données sont`);
+      log('encore présentes dans les anciens fichiers à plat :\n');
+      for (const fileName of guildStore.LEGACY_FILES) {
+        const filePath = path.join(DATA_DIR, fileName);
+        if (fs.existsSync(filePath)) log(`  • data/${fileName}`);
+      }
+      log('\nCela se produit quand le bot a été démarré avant la migration :');
+      log('il a marqué le schéma comme à jour sans rien déplacer.');
+      log('\nVérifie le plan, puis relance avec --force pour migrer quand même :');
+      log(`  node scripts/migrate-data-v2.js${options.guildId ? ` --guild-id ${options.guildId}` : ''} --dry-run`);
+      log(`  node scripts/migrate-data-v2.js${options.guildId ? ` --guild-id ${options.guildId}` : ''} --force\n`);
+      process.exitCode = 1;
+      return;
+    }
+
+    log(`\n⚠️  Schéma déjà en v${currentVersion} mais données héritées présentes : migration forcée.\n`);
   }
 
   const legacy = loadLegacy();
@@ -745,7 +770,9 @@ function main() {
     return;
   }
 
-  guildStore.writeSchemaVersion(guildStore.SCHEMA_VERSION);
+  guildStore.writeSchemaVersion(guildStore.SCHEMA_VERSION, {
+    migratedAt: new Date().toISOString(),
+  });
 
   title('Migration terminée avec succès');
   log(`\n✅ ${built.plan.size} serveur(s) migré(s) vers data/guilds/.`);
