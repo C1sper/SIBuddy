@@ -120,8 +120,9 @@ devoirs-archives.json
 data/*
 !data/.gitkeep
 
-# Sauvegardes créées par scripts/migrate-data-v2.js : elles contiennent
-# les données réelles du bot, elles ne doivent jamais être versionnées.
+# Sauvegardes de migration. Elles vivent désormais dans data/backups/ (donc
+# déjà couvertes par "data/*" ci-dessus) ; la règle historique reste pour les
+# installations qui ont encore un data-backups/ à la racine.
 data-backups/
 
 # Semgrep Guardian : état local de la machine (identifiant anonyme, méthode

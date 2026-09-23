@@ -141,11 +141,20 @@ test('migration réelle : sauvegarde, éclatement par serveur, compteurs conserv
   assert.match(out, /Validation OK/);
 
   // --- Sauvegarde ---
-  const backupRoot = path.join(root, 'data-backups');
+  // Elle vit DANS data/ : en conteneur, seul ce dossier est monté, une
+  // sauvegarde placée à côté partirait avec le conteneur.
+  const backupRoot = path.join(dataDir, 'backups');
   assert.ok(fs.existsSync(backupRoot), 'sauvegarde créée');
   const backups = fs.readdirSync(backupRoot);
   assert.equal(backups.length, 1);
   assert.ok(fs.existsSync(path.join(backupRoot, backups[0], 'data', 'devoirs.json')));
+
+  // La sauvegarde ne se contient pas elle-même.
+  assert.equal(
+    fs.existsSync(path.join(backupRoot, backups[0], 'data', 'backups')),
+    false,
+    'la sauvegarde ne doit pas se copier dans elle-même',
+  );
 
   // --- Anciennes données conservées ---
   for (const file of ['devoirs.json', 'devoirs-archives.json', 'reminders.json', 'stats.json']) {
@@ -267,7 +276,7 @@ test('la destination existante n’est jamais écrasée sans --force', () => {
   assert.equal(code, 1);
   assert.match(out, /contient déjà des données/);
   assert.match(out, /--force/);
-  assert.equal(fs.readdirSync(path.join(root, 'data-backups')).length, 1, 'aucune seconde sauvegarde');
+  assert.equal(fs.readdirSync(path.join(dataDir, 'backups')).length, 1, 'aucune seconde sauvegarde');
 });
 
 test('installation vierge : le schéma est simplement initialisé', () => {
