@@ -2,6 +2,9 @@ const { SlashCommandBuilder, ChannelType, MessageFlags } = require('discord.js')
 const Parser = require('rss-parser');
 const { readRssConfig, writeRssConfig } = require('../../services/rssConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('rss-setup')
@@ -84,10 +87,10 @@ module.exports = {
                         `Le bot vérifiera automatiquement ce flux et publiera les nouveaux articles dans le channel spécifié.`
             });
 
-            console.log(`RSS configuré: ${customName || feed.title} -> #${channel.name} par ${interaction.user.tag}`);
+            log.info(`RSS configuré: ${customName || feed.title} -> #${channel.name} par ${interaction.user.tag}`);
 
         } catch (error) {
-            console.error('Erreur lors de la configuration RSS:', error);
+            log.error('Erreur lors de la configuration RSS:', error);
 
             let errorMessage = 'Erreur lors de la configuration du flux RSS.';
             

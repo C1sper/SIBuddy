@@ -1,7 +1,15 @@
 const { Events, MessageFlags } = require('discord.js');
 const { handleEventInteraction } = require('../utils/eventInteractions');
 const adminPanelHandler = require('../interactions/adminPanelHandler');
-const { debug } = require('../utils/logger');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('interactions');
+
+/** "arthus#0001 dans Ma Guilde" — de quoi retrouver qui a fait quoi. */
+function who(interaction) {
+  const user = interaction.user?.tag || 'inconnu';
+  return interaction.guild ? `${user} dans ${interaction.guild.name}` : `${user} en DM`;
+}
 
 async function replyError(interaction) {
     try {
@@ -16,7 +24,7 @@ async function replyError(interaction) {
             await interaction.reply(errorMessage);
         }
     } catch (responseError) {
-        console.error('❌ Impossible de répondre à l\'interaction:', responseError.message);
+        log.error('Impossible de répondre à l\'interaction:', responseError);
         // Si l'interaction a expiré ou a déjà été gérée, on ne peut plus rien faire
     }
 }
@@ -31,7 +39,7 @@ module.exports = {
             try {
                 await command.autocomplete(interaction);
             } catch (error) {
-                console.error(`❌ Erreur autocomplete /${interaction.commandName}:`, error.message);
+                log.error(`Autocomplétion /${interaction.commandName}:`, error);
             }
             return;
         }
@@ -41,15 +49,16 @@ module.exports = {
             const command = interaction.client.commands.get(interaction.commandName);
 
             if (!command) {
-                console.error(`❌ Commande inconnue : ${interaction.commandName}`);
+                log.warn(`Commande inconnue : /${interaction.commandName}`);
                 return;
             }
 
+            const startedAt = Date.now();
             try {
-                debug(`📝 ${interaction.user.tag} a utilisé /${interaction.commandName}`);
                 await command.execute(interaction);
+                log.info(`/${interaction.commandName} — ${who(interaction)} (${Date.now() - startedAt}ms)`);
             } catch (error) {
-                console.error(`❌ Erreur lors de l'exécution de /${interaction.commandName}:`, error);
+                log.error(`/${interaction.commandName} — ${who(interaction)}:`, error);
                 await replyError(interaction);
             }
             return;
@@ -69,7 +78,7 @@ module.exports = {
                 // Les autres customId (poll_*, events_prev/next, confirm/cancel_delete_*, ...)
                 // sont gérés par leurs propres message component collectors.
             } catch (error) {
-                console.error(`❌ Erreur bouton (${customId}):`, error);
+                log.error(`Bouton ${customId} — ${who(interaction)}:`, error);
                 await replyError(interaction);
             }
             return;
@@ -83,7 +92,7 @@ module.exports = {
                 }
                 // event_details_select est géré par son propre collector.
             } catch (error) {
-                console.error(`❌ Erreur menu (${customId}):`, error);
+                log.error(`Menu ${customId} — ${who(interaction)}:`, error);
                 await replyError(interaction);
             }
             return;
@@ -96,7 +105,7 @@ module.exports = {
                     await adminPanelHandler.route(interaction);
                 }
             } catch (error) {
-                console.error(`❌ Erreur modal (${customId}):`, error);
+                log.error(`Modal ${customId} — ${who(interaction)}:`, error);
                 await replyError(interaction);
             }
         }

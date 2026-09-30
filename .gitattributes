@@ -1,0 +1,13 @@
+# Normalisation des fins de ligne.
+#
+# Le dépôt stocke systématiquement du LF, et `eol=lf` impose aussi le LF dans
+# la copie de travail, quel que soit le système. Sans cette seconde partie, le
+# CRLF réapparaît dès qu'un fichier est édité depuis Windows (le dépôt vit sur
+# un disque monté), et 12 fichiers non modifiés ressortent en « modifiés » —
+# soit ~1 800 lignes de diff fantôme dans le commit suivant.
+#
+# Le bot s'exécute sur node:20-alpine : le LF est de toute façon la cible.
+* text=auto eol=lf
+
+# Le lockfile est généré : on évite qu'il soit présenté comme un diff éditable.
+package-lock.json -diff linguist-generated

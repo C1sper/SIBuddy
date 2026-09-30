@@ -1,22 +1,33 @@
 // commands/utility/ajouter-devoir.js
+// La catégorie n'est plus une liste de choix figée : elle est autocomplétée
+// dynamiquement à partir des catégories du serveur courant. Ajouter une
+// catégorie depuis le panel ne nécessite donc AUCUN redéploiement des
+// commandes slash.
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js')
 
 const devoirsService = require('../../services/devoirsService')
+const categoriesService = require('../../services/categoriesService')
 const { isFeatureEnabled } = require('../../services/guildConfig')
+const { respondWithCategories } = require('../../utils/devoirAutocomplete')
 
-const { TYPE_LABELS, IMPORTANCE_LABELS } = devoirsService
+const { IMPORTANCE_LABELS } = devoirsService
 
-// Commande
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ajouter-devoir')
-    .setDescription(
-      'Ajoute un devoir, un examen ou un projet avec rappels J-7 et J-1.'
+    .setDescription('Ajoute une date importante (devoir, examen, projet...) avec rappels J-7 et J-1.')
+    .setContexts(['Guild'])
+    .addStringOption(option =>
+      option
+        .setName('matiere')
+        .setDescription('Matière (ex : Cryptographie)')
+        .setRequired(true)
+        .setMaxLength(60)
     )
     .addStringOption(option =>
       option
         .setName('titre')
-        .setDescription('Titre')
+        .setDescription('Nom de la tâche (ex : TP RSA)')
         .setRequired(true)
         .setMaxLength(100)
     )
@@ -28,21 +39,21 @@ module.exports = {
     )
     .addStringOption(option =>
       option
-        .setName('type')
-        .setDescription('Type : devoir, examen ou projet')
+        .setName('categorie')
+        .setDescription('Catégorie du serveur (autocomplétée)')
         .setRequired(true)
-        .addChoices(
-          { name: 'devoir', value: 'devoir' },
-          { name: 'examen', value: 'examen' },
-          { name: 'projet', value: 'projet' }
-        )
+        .setAutocomplete(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName('heure')
+        .setDescription('Heure limite (HH:mm). Par défaut : minuit.')
+        .setRequired(false)
     )
     .addStringOption(option =>
       option
         .setName('importance')
-        .setDescription(
-          'Importance : peu important / important / très important'
-        )
+        .setDescription('Importance : peu important / important / très important')
         .setRequired(false)
         .addChoices(
           { name: 'peu important', value: 'faible' },
@@ -66,30 +77,34 @@ module.exports = {
   emoji: '🧾',
 
   async execute (interaction) {
-    if (interaction.guildId && !isFeatureEnabled(interaction.guildId, 'homework')) {
+    if (!interaction.guildId) {
+      return interaction.reply({
+        content: '❌ Cette commande doit être utilisée dans un serveur.',
+        flags: MessageFlags.Ephemeral
+      })
+    }
+
+    if (!isFeatureEnabled(interaction.guildId, 'homework')) {
       return interaction.reply({
         content: '❌ Le système de devoirs est désactivé sur ce serveur.',
         flags: MessageFlags.Ephemeral
       })
     }
 
-    const titre = interaction.options.getString('titre', true)
-    const dateStr = interaction.options.getString('date', true)
-    const type = interaction.options.getString('type', true)
-    const importance =
-      interaction.options.getString('importance') || 'important'
-    const description = interaction.options.getString('description') || ''
-    const timingsStr = interaction.options.getString('timings') || ''
-
+    // La valeur reçue de l'autocomplétion n'est jamais considérée comme fiable :
+    // devoirsService.addDevoir revérifie que la catégorie existe, appartient
+    // bien à ce serveur et est toujours active.
     const result = devoirsService.addDevoir({
       guildId: interaction.guildId,
       channelId: interaction.channelId,
-      titre,
-      date: dateStr,
-      description,
-      type,
-      importance,
-      timingsStr
+      matiere: interaction.options.getString('matiere', true),
+      titre: interaction.options.getString('titre', true),
+      date: interaction.options.getString('date', true),
+      heure: interaction.options.getString('heure') || null,
+      categoryRef: interaction.options.getString('categorie', true),
+      importance: interaction.options.getString('importance') || 'important',
+      description: interaction.options.getString('description') || '',
+      timingsStr: interaction.options.getString('timings') || ''
     })
 
     if (!result.ok) {
@@ -99,26 +114,27 @@ module.exports = {
       })
     }
 
-    const { devoir, remindersCreated } = result
-    const typeLabel = TYPE_LABELS[type] || 'Devoir'
-    const impLabel = IMPORTANCE_LABELS[importance] || 'Important'
+    const { devoir, category, remindersCreated } = result
 
     const embed = new EmbedBuilder()
-      .setColor(
-        type === 'examen' ? 0x9b59b6 : type === 'projet' ? 0x3498db : 0x2ecc71
-      )
-      .setTitle(`✅ ${typeLabel} ajouté`)
+      .setColor(0x2ecc71)
+      .setTitle(`✅ ${categoriesService.formatCategory(category)} ajouté`)
       .addFields(
-        { name: '📘 Titre', value: devoir.titre },
-        { name: '🗂️ Type', value: typeLabel, inline: true },
-        { name: '📍 Importance', value: impLabel, inline: true },
-        { name: '📅 Date limite', value: devoir.date, inline: true },
+        { name: '📗 Matière', value: devoir.matiere || '—', inline: true },
+        { name: '📘 Nom', value: devoir.titre, inline: true },
+        { name: '📍 Importance', value: IMPORTANCE_LABELS[devoir.importance] || 'Important', inline: true },
+        {
+          name: '📅 Date limite',
+          value: devoirsService.formatEcheance(devoir),
+          inline: true
+        },
+        { name: '🗂️ Catégorie', value: categoriesService.formatCategory(category), inline: true },
         { name: '📝 Description', value: devoir.description || 'Aucune' },
         { name: '📢 Salon des rappels', value: `<#${interaction.channelId}>` }
       )
       .setTimestamp()
       .setFooter({
-        text: 'Bot Discord 3SIB',
+        text: 'Bot Discord 4SIB',
         iconURL: interaction.client.user.displayAvatarURL()
       })
 
@@ -133,17 +149,18 @@ module.exports = {
       embed.addFields({
         name: '🔔 Rappels programmés (persistants)',
         value: remindersCreated
-          .map(
-            r =>
-              `• ${r.kind} → ${new Date(r.remindAtISO).toLocaleString('fr-FR')}`
-          )
+          .map(r => `• ${r.kind} → ${new Date(r.remindAtISO).toLocaleString('fr-FR')}`)
           .join('\n')
       })
     }
 
-    await interaction.reply({
-      embeds: [embed],
-      flags: MessageFlags.Ephemeral
-    })
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral })
+
+    // Le tableau des dates importantes reflète immédiatement l'ajout.
+    await interaction.client.refreshDevoirBoard?.(interaction.guildId)
+  },
+
+  async autocomplete (interaction) {
+    await respondWithCategories(interaction)
   }
 }

@@ -127,12 +127,16 @@ commands/events/
 ├── delete.js          # Suppression d'événements
 └── stats.js           # Statistiques
 
-events/
-├── eventInteractions.js    # Gestion des boutons RSVP
-├── reminderSystem.js       # Système de rappels automatiques
-└── recurringEvents.js      # Gestion des événements récurrents
+utils/
+└── eventInteractions.js    # Gestion des boutons RSVP
 
-events-config.json     # Base de données des événements
+services/
+├── reminderSystem.js       # Système de rappels automatiques
+├── recurringEvents.js      # Gestion des événements récurrents
+└── eventsConfigStore.js    # Accès aux données (par serveur)
+
+data/guilds/<guildId>/events.json    # Événements, par serveur Discord
+data/global/events-settings.json     # Réglages partagés (limites, rappels par défaut)
 ```
 
 ## 🗄️ Structure de données
@@ -214,8 +218,12 @@ events-config.json     # Base de données des événements
 - **Au démarrage :** Rechargement et reprogrammation des rappels
 
 ### Fichiers de configuration
-- `events-config.json` : Base de données principale
-- Sauvegarde automatique après chaque modification
+- `data/guilds/<guildId>/events.json` : événements du serveur — chaque serveur
+  Discord possède les siens, aucune donnée n'est partagée entre serveurs
+- `data/global/events-settings.json` : réglages communs au bot
+  (`maxEventsPerGuild`, `maxParticipantsPerEvent`, rappels par défaut)
+- Accès centralisé via `services/eventsConfigStore.js` : écriture atomique,
+  sauvegarde automatique après chaque modification
 - Format JSON lisible et modifiable manuellement
 
 ## 🎉 Utilisation recommandée
@@ -250,4 +258,4 @@ events-config.json     # Base de données des événements
 
 ---
 
-*Système développé pour le bot Discord 3SIB - Version 1.0*
+*Système développé pour le bot Discord 4SIB - Version 1.0*

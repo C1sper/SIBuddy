@@ -1,19 +1,29 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js')
+
 const devoirsService = require('../../services/devoirsService')
+const categoriesService = require('../../services/categoriesService')
 const { isFeatureEnabled } = require('../../services/guildConfig')
 
-const { TYPE_LABELS, IMPORTANCE_LABELS } = devoirsService
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
+const { IMPORTANCE_LABELS } = devoirsService
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('anciens-devoirs')
-    .setDescription(
-      'Affiche les devoirs / examens / projets dont la date est dépassée pour ce serveur.'
-    )
+    .setDescription('Affiche les dates importantes déjà passées (archivées) de ce serveur.')
     .setContexts(['Guild']),
   emoji: '📜',
 
   async execute (interaction) {
+    if (!interaction.guildId) {
+      return interaction.reply({
+        content: '❌ Cette commande doit être utilisée dans un serveur.',
+        flags: MessageFlags.Ephemeral
+      })
+    }
+
     if (!isFeatureEnabled(interaction.guildId, 'homework')) {
       return interaction.reply({
         content: '❌ Le système de devoirs est désactivé sur ce serveur.',
@@ -21,16 +31,18 @@ module.exports = {
       })
     }
 
-    const moved = devoirsService.movePastDevoirsToArchive()
+    const guildId = interaction.guildId
+
+    const moved = devoirsService.movePastDevoirsToArchive(guildId)
     if (moved > 0) {
-      console.log(`Archivage : ${moved} devoir(s) déplacé(s) vers l’archive.`)
+      log.info(`Archivage : ${moved} devoir(s) déplacé(s) vers l’archive.`)
     }
 
-    const archived = devoirsService.listArchived(interaction.guildId)
+    const archived = devoirsService.listArchived(guildId)
 
     if (archived.length === 0) {
       return interaction.reply({
-        content: '📭 Aucun ancien devoir/examen/projet archivé pour ce serveur.',
+        content: '📭 Aucun élément archivé pour ce serveur.',
         flags: MessageFlags.Ephemeral
       })
     }
@@ -40,22 +52,22 @@ module.exports = {
 
     const desc = slice
       .map((d, i) => {
-        const typeLabel = TYPE_LABELS[d.type] || 'Devoir'
-        const impLabel = IMPORTANCE_LABELS[d.importance || 'important'] || 'Important'
+        const category = devoirsService.getDevoirCategory(guildId, d)
+        const impLabel = IMPORTANCE_LABELS[d.importance] || 'Important'
+        const subject = d.matiere ? `**${d.matiere}** → ${d.titre}` : `**${d.titre}**`
 
         return (
-          `**${i + 1}. ${d.titre}** (${typeLabel})\n` +
-          `📅 ${d.date}\n` +
-          `📍 ${impLabel}\n` +
+          `**${i + 1}.** ${subject}\n` +
+          `🗂️ ${categoriesService.formatCategory(category)} — 📅 ${devoirsService.formatEcheance(d)} — 📍 ${impLabel}\n` +
           (d.description ? `📝 ${d.description}\n` : '') +
-          `​`
+          '​'
         )
       })
       .join('\n')
 
     const embed = new EmbedBuilder()
       .setColor(0x95a5a6)
-      .setTitle('📜 Anciens devoirs / examens / projets (archivés)')
+      .setTitle('📜 Dates importantes passées (archivées)')
       .setDescription(desc)
       .setFooter({
         text:
@@ -65,9 +77,6 @@ module.exports = {
       })
       .setTimestamp()
 
-    await interaction.reply({
-      embeds: [embed],
-      flags: MessageFlags.Ephemeral
-    })
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral })
   }
 }

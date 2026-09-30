@@ -64,10 +64,10 @@ module.exports = {
         const embeds = chunks.map((description, index) =>
             new EmbedBuilder()
                 .setColor(0x0099FF)
-                .setTitle(index === 0 ? '🤖 Aide - 3SIB Bot' : `🤖 Aide - 3SIB Bot (suite ${index + 1})`)
+                .setTitle(index === 0 ? '🤖 Aide - 4SIB Bot' : `🤖 Aide - 4SIB Bot (suite ${index + 1})`)
                 .setDescription(index === 0 ? `Voici la liste des **${lines.length}** commandes disponibles :\n\n${description}` : description)
                 .setFooter({
-                    text: 'Bot Discord 3SIB',
+                    text: 'Bot Discord 4SIB',
                     iconURL: interaction.client.user.displayAvatarURL()
                 })
                 .setTimestamp()

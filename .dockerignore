@@ -6,6 +6,8 @@ npm-debug.log
 .env.*
 data/*
 !data/.gitkeep
+data-backups
+tests
 *.log
 .vscode
 .idea

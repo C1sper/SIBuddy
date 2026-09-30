@@ -5,16 +5,25 @@ const { isFeatureEnabled } = require("../../services/guildConfig");
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("stats")
-        .setDescription("Affiche le top des membres les plus actifs"),
+        .setDescription("Affiche le top des membres les plus actifs de ce serveur")
+        .setContexts(["Guild"]),
     async execute(interaction) {
-        if (interaction.guildId && !isFeatureEnabled(interaction.guildId, "stats")) {
+        if (!interaction.guildId) {
+            return interaction.reply({
+                content: "❌ Cette commande doit être utilisée dans un serveur.",
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+
+        if (!isFeatureEnabled(interaction.guildId, "stats")) {
             return interaction.reply({
                 content: "📊 La collecte des statistiques est désactivée sur ce serveur.",
                 flags: MessageFlags.Ephemeral,
             });
         }
 
-        const sorted = statsStore.getTopUsers(5);
+        // Classement strictement limité au serveur courant.
+        const sorted = statsStore.getTopUsers(interaction.guildId, 5);
 
         if (sorted.length === 0) {
             return interaction.reply({

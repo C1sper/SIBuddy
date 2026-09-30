@@ -7,6 +7,9 @@ const {
     ButtonStyle, MessageFlags } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../../services/eventsConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 /**
  * ==========================================
  * COMMANDE EVENT-LIST - Liste des événements
@@ -201,7 +204,7 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Erreur lors de l\'affichage de la liste des événements:', error);
+            log.error('Erreur lors de l\'affichage de la liste des événements:', error);
             await interaction.editReply({
                 content: '❌ Une erreur est survenue lors de l\'affichage des événements.'
             });

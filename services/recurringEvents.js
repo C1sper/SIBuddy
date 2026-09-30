@@ -1,6 +1,9 @@
 const { readEventsConfig, writeEventsConfig } = require('./eventsConfigStore');
 const { isFeatureEnabled } = require('./guildConfig');
 
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('recurringEvents');
 /**
  * ===============================================
  * SYSTÈME D'ÉVÉNEMENTS RÉCURRENTS
@@ -32,7 +35,7 @@ class RecurringEventsManager {
             this.processRecurringEvents();
         }, 60 * 60 * 1000); // 1 heure
         
-        console.log('🔄 Gestionnaire d\'événements récurrents initialisé');
+        log.info('Gestionnaire d\'événements récurrents initialisé');
     }
 
     /**
@@ -67,11 +70,11 @@ class RecurringEventsManager {
 
             if (processedCount > 0) {
                 this.saveEventsConfig(eventsConfig);
-                console.log(`🔄 ${processedCount} nouvelles occurrences d'événements récurrents créées`);
+                log.info(`${processedCount} nouvelles occurrences d'événements récurrents créées`);
             }
 
         } catch (error) {
-            console.error('Erreur lors du traitement des événements récurrents:', error);
+            log.error('Erreur lors du traitement des événements récurrents:', error);
         }
     }
 
@@ -225,12 +228,12 @@ class RecurringEventsManager {
                 this.client.reminderSystem.scheduleReminders(newEvent);
             }
 
-            console.log(`🔄 Nouvelle occurrence créée: ${newEvent.title} le ${nextDate.toLocaleDateString('fr-FR')}`);
+            log.info(`Nouvelle occurrence créée: ${newEvent.title} le ${nextDate.toLocaleDateString('fr-FR')}`);
             
             return newEvent;
 
         } catch (error) {
-            console.error('Erreur lors de la création d\'une occurrence récurrente:', error);
+            log.error('Erreur lors de la création d\'une occurrence récurrente:', error);
             return null;
         }
     }
@@ -268,11 +271,11 @@ class RecurringEventsManager {
                 
                 eventData.discordEventId = discordEvent.id;
             } catch (error) {
-                console.log('Impossible de créer l\'événement Discord natif récurrent:', error.message);
+                log.info('Impossible de créer l\'événement Discord natif récurrent:', error.message);
             }
 
         } catch (error) {
-            console.error('Erreur lors de la création du message d\'événement récurrent:', error);
+            log.error('Erreur lors de la création du message d\'événement récurrent:', error);
         }
     }
 
@@ -305,7 +308,7 @@ class RecurringEventsManager {
 
         if (cleanedCount > 0) {
             this.saveEventsConfig(eventsConfig);
-            console.log(`🧹 ${cleanedCount} anciennes occurrences récurrentes supprimées`);
+            log.info(`🧹 ${cleanedCount} anciennes occurrences récurrentes supprimées`);
         }
     }
 

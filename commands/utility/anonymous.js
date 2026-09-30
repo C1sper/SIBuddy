@@ -3,6 +3,9 @@ const {
   PermissionFlagsBits,
   ChannelType,
   EmbedBuilder, MessageFlags } = require('discord.js');
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 
 // Empêche les pings @everyone, @here, rôles et users (normalement)
 function sanitizeForNoPings(text) {
@@ -39,26 +42,30 @@ module.exports = {
     emoji: '💬',
 
   async execute(interaction) {
+    // On accuse réception immédiatement (avant tout envoi réseau) : sans ça,
+    // le token de l'interaction expire après 3 s et chaque reply échoue avec
+    // DiscordAPIError[10062] « Unknown interaction ». Le flag Ephemeral doit
+    // être posé ici : il ne peut plus changer une fois la réponse envoyée.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const raw = interaction.options.getString("message", true);
     const targetChannel =
       interaction.options.getChannel("salon") || interaction.channel;
 
     // Vérif du type de salon
     if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
-      return interaction.reply({
+      return interaction.editReply({
         content:
           "Je ne peux envoyer des messages que dans un salon textuel du serveur.",
-        flags: MessageFlags.Ephemeral,
       });
     }
 
     // Vérif permissions d’envoi pour le bot
     const perms = targetChannel.permissionsFor(interaction.client.user.id);
     if (!perms || !perms.has(PermissionFlagsBits.SendMessages)) {
-      return interaction.reply({
+      return interaction.editReply({
         content:
           "Je n’ai pas la permission d’envoyer des messages dans ce salon.",
-        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -80,17 +87,16 @@ module.exports = {
             : `Ton message a été posté anonymement dans <#${targetChannel.id}>.`
         )
         .setFooter({
-          text: "Bot Discord 3SIB",
+          text: "Bot Discord 4SIB",
           iconURL: interaction.client.user.displayAvatarURL(),
         })
         .setTimestamp();
 
-      await interaction.reply({ embeds: [confirm], flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ embeds: [confirm] });
     } catch (err) {
-      console.error("Anonymous send error:", err);
-      await interaction.reply({
+      log.error("Anonymous send error:", err);
+      await interaction.editReply({
         content: "Une erreur est survenue lors de l’envoi du message.",
-        flags: MessageFlags.Ephemeral,
       });
     }
   },

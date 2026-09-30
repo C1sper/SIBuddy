@@ -1,58 +1,28 @@
 // services/dataStore.js
-// Accès centralisé au dossier data/ : chemin absolu stable, lecture/écriture JSON
-// sûres, écriture atomique (fichier temporaire + rename), verrou en mémoire
-// pour sérialiser les écritures concurrentes sur un même fichier.
+// Primitives bas niveau d'accès au dossier data/ : chemin absolu stable,
+// lecture/écriture JSON sûres, écriture atomique (fichier temporaire + rename),
+// mise en quarantaine des fichiers corrompus.
+//
+// Ce module ne connaît QUE des chemins de fichiers. La répartition logique
+// des données (global vs par serveur Discord) est gérée par services/guildStore.js.
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('dataStore');
+// BOT_DATA_DIR permet de rediriger tout le stockage ailleurs (tests isolés,
+// montage Docker non standard). Par défaut : <racine du projet>/data.
+const DATA_DIR = process.env.BOT_DATA_DIR
+  ? path.resolve(process.env.BOT_DATA_DIR)
+  : path.join(__dirname, '..', 'data');
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+}
 
 function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function resolveDataPath(fileName) {
-  return path.join(DATA_DIR, fileName);
-}
-
-/**
- * Lit un fichier JSON dans data/. Retourne `fallback` si le fichier
- * n'existe pas ou si le JSON est invalide (sans jamais faire planter le bot).
- */
-function readJson(fileName, fallback) {
-  ensureDataDir();
-  const filePath = resolveDataPath(fileName);
-  if (!fs.existsSync(filePath)) return structuredCloneSafe(fallback);
-
-  try {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    if (raw.trim().length === 0) return structuredCloneSafe(fallback);
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error(`[dataStore] JSON invalide dans ${fileName}, valeurs par défaut utilisées:`, e.message);
-    return structuredCloneSafe(fallback);
-  }
-}
-
-/**
- * Écrit un fichier JSON dans data/ de façon atomique (tmp + rename).
- * Reste synchrone (comme le reste du module) : dans un process Node
- * mono-thread, ça garantit qu'une lecture juste après une écriture voit
- * bien les données à jour, sans avoir besoin d'une file d'attente asynchrone.
- */
-function writeJson(fileName, data) {
-  ensureDataDir();
-  const filePath = resolveDataPath(fileName);
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  const payload = JSON.stringify(data, null, 2);
-
-  try {
-    fs.writeFileSync(tmpPath, payload, 'utf-8');
-    fs.renameSync(tmpPath, filePath);
-  } catch (e) {
-    console.error(`[dataStore] Erreur écriture ${fileName}:`, e.message);
-    try { fs.unlinkSync(tmpPath); } catch { /* tmp déjà absent */ }
-  }
+  ensureDir(DATA_DIR);
 }
 
 function structuredCloneSafe(value) {
@@ -60,10 +30,83 @@ function structuredCloneSafe(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * Renomme un fichier illisible en `<nom>.corrupt-<horodatage>` au lieu de le
+ * laisser se faire écraser au prochain write. On ne perd jamais de données :
+ * le fichier reste sur le disque pour inspection manuelle.
+ */
+function quarantineCorrupt(filePath, reason) {
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const target = `${filePath}.corrupt-${stamp}`;
+    fs.renameSync(filePath, target);
+    log.error(
+      `${path.basename(filePath)} illisible (${reason}). ` +
+      `Conservé sous ${path.basename(target)}, valeurs par défaut utilisées.`,
+    );
+  } catch (e) {
+    log.error(`Impossible de mettre en quarantaine ${filePath}:`, e.message);
+  }
+}
+
+/**
+ * Lit un fichier JSON à un chemin absolu. Retourne `fallback` si le fichier
+ * n'existe pas, est vide, ou contient du JSON invalide (mis en quarantaine).
+ */
+function readJsonAt(filePath, fallback) {
+  if (!fs.existsSync(filePath)) return structuredCloneSafe(fallback);
+
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch (e) {
+    log.error(`Erreur lecture ${filePath}:`, e.message);
+    return structuredCloneSafe(fallback);
+  }
+
+  if (raw.trim().length === 0) return structuredCloneSafe(fallback);
+
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    quarantineCorrupt(filePath, e.message);
+    return structuredCloneSafe(fallback);
+  }
+}
+
+/**
+ * Écrit un fichier JSON de façon atomique (tmp + rename) à un chemin absolu.
+ * Crée le dossier parent si nécessaire. Retourne true/false.
+ *
+ * Reste synchrone (comme le reste du module) : dans un process Node
+ * mono-thread, ça garantit qu'une lecture juste après une écriture voit
+ * bien les données à jour, sans file d'attente asynchrone.
+ */
+function writeJsonAt(filePath, data) {
+  ensureDir(path.dirname(filePath));
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+    return true;
+  } catch (e) {
+    log.error(`Erreur écriture ${filePath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch { /* tmp déjà absent */ }
+    return false;
+  }
+}
+
+// Volontairement, ce module n'expose PAS de helper "lire/écrire un fichier à la
+// racine de data/". Toute donnée passe soit par services/guildStore.js
+// (readGuildJson/writeGuildJson, cloisonnées par serveur), soit par ses
+// helpers globaux explicites (readGlobalJson/writeGlobalJson). Ça supprime le
+// chemin par lequel un fichier redeviendrait accidentellement global.
 module.exports = {
   DATA_DIR,
+  ensureDir,
   ensureDataDir,
-  resolveDataPath,
-  readJson,
-  writeJson,
+  readJsonAt,
+  writeJsonAt,
+  structuredCloneSafe,
 };

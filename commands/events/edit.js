@@ -10,6 +10,9 @@ const {
 } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../../services/eventsConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 /**
  * ==========================================
  * COMMANDE EVENT-EDIT - Modification d'événements
@@ -232,10 +235,10 @@ module.exports = {
 
             await interaction.editReply({ embeds: [successEmbed] });
 
-            console.log(`Événement modifié: ${event.title} (${eventId}) par ${interaction.user.tag}`);
+            log.info(`Événement modifié: ${event.title} (${eventId}) par ${interaction.user.tag}`);
 
         } catch (error) {
-            console.error('Erreur lors de la modification de l\'événement:', error);
+            log.error('Erreur lors de la modification de l\'événement:', error);
             await interaction.editReply({
                 content: '❌ Une erreur est survenue lors de la modification de l\'événement.'
             });
@@ -259,7 +262,7 @@ async function updateEventMessage(interaction, event) {
             components: [rsvpButtons]
         });
     } catch (error) {
-        console.error('Erreur lors de la mise à jour du message d\'événement:', error);
+        log.error('Erreur lors de la mise à jour du message d\'événement:', error);
     }
 }
 
@@ -276,7 +279,7 @@ async function updateDiscordEvent(interaction, event) {
             scheduledStartTime: new Date(event.dateTime)
         });
     } catch (error) {
-        console.log('Impossible de mettre à jour l\'événement Discord natif:', error.message);
+        log.info('Impossible de mettre à jour l\'événement Discord natif:', error.message);
     }
 }
 
@@ -330,7 +333,7 @@ async function notifyParticipantsOfChanges(interaction, event, changes) {
                 const user = await interaction.client.users.fetch(userId);
                 await user.send({ embeds: [notificationEmbed] });
             } catch (error) {
-                console.log(`Impossible de notifier l'utilisateur ${userId}:`, error.message);
+                log.info(`Impossible de notifier l'utilisateur ${userId}:`, error.message);
             }
         });
 

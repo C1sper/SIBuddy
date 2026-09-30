@@ -4,6 +4,9 @@ const {
 } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../../services/eventsConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 /**
  * ==========================================
  * COMMANDE EVENT-STATS - Statistiques des événements
@@ -55,7 +58,7 @@ module.exports = {
             await interaction.editReply({ embeds: [statsEmbed] });
 
         } catch (error) {
-            console.error('Erreur lors du calcul des statistiques:', error);
+            log.error('Erreur lors du calcul des statistiques:', error);
             await interaction.editReply({
                 content: '❌ Une erreur est survenue lors du calcul des statistiques.'
             });

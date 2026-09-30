@@ -7,6 +7,9 @@ const {
     ChannelType, MessageFlags } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../../services/eventsConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 /**
  * =============================================
  * COMMANDE EVENT-CREATE - Création d'événements
@@ -207,7 +210,7 @@ module.exports = {
                 eventsConfig.events[interaction.guildId][eventId] = eventData;
                 saveEventsConfig(eventsConfig);
             } catch (error) {
-                console.log('Impossible de créer l\'événement Discord natif:', error.message);
+                log.info('Impossible de créer l\'événement Discord natif:', error.message);
             }
 
             // Confirmation de création
@@ -229,7 +232,7 @@ module.exports = {
             await interaction.editReply({ embeds: [confirmEmbed] });
 
         } catch (error) {
-            console.error('Erreur lors de la création de l\'événement:', error);
+            log.error('Erreur lors de la création de l\'événement:', error);
             await interaction.editReply({
                 content: '❌ Une erreur est survenue lors de la création de l\'événement.'
             });

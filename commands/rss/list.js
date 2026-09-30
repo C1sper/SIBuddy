@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { readRssConfig, writeRssConfig } = require('../../services/rssConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('rss-list')
@@ -57,7 +60,7 @@ module.exports = {
             await interaction.reply({ embeds: [embed] });
 
         } catch (error) {
-            console.error('Erreur lors de l\'affichage des flux RSS:', error);
+            log.error('Erreur lors de l\'affichage des flux RSS:', error);
             await interaction.reply({
                 content: 'Une erreur s\'est produite lors de l\'affichage des flux RSS.',
                 flags: MessageFlags.Ephemeral

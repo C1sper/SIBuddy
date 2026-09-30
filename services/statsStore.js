@@ -1,55 +1,45 @@
 // services/statsStore.js
-// Source unique de vérité pour stats.json (compteur de messages par utilisateur).
-// Incrémente en mémoire, sauvegarde différée (debounce) pour éviter d'écrire
-// à chaque message, et flush garanti sur SIGTERM/SIGINT (arrêt Docker).
-const fs = require('fs');
-const path = require('path');
-const { readJson, writeJson, resolveDataPath } = require('./dataStore');
+// Compteur de messages par utilisateur, stocké PAR SERVEUR :
+// data/guilds/<guildId>/stats.json
+//
+// Avant la v2, un unique data/stats.json agrégeait tous les serveurs : /stats
+// sur un serveur affichait donc l'activité des membres d'un autre. C'est
+// désormais impossible.
+//
+// Les messages reçus en DM (hors serveur) ne sont plus comptabilisés : ils
+// n'appartiennent à aucun serveur et fausseraient les classements.
+const { FILES, readGuildJson, writeGuildJson, normalizeGuildId } = require('./guildStore');
 
-const FILE_NAME = 'stats.json';
-// Ancien emplacement (racine du repo) utilisé avant la centralisation dans data/.
-const LEGACY_ROOT_STATS_PATH = path.join(__dirname, '..', 'stats.json');
 const FLUSH_DEBOUNCE_MS = 5_000;
 
-let stats = null;
-let dirty = false;
+// guildId -> { userId: count }
+const cache = new Map();
+const dirtyGuilds = new Set();
 let flushTimer = null;
 
-function loadLegacyRootStats() {
-  if (!fs.existsSync(LEGACY_ROOT_STATS_PATH)) return null;
-  try {
-    const raw = fs.readFileSync(LEGACY_ROOT_STATS_PATH, 'utf-8');
-    if (!raw.trim()) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch (e) {
-    console.error('[statsStore] Impossible de lire l\'ancien stats.json à la racine:', e.message);
-    return null;
-  }
-}
+function load(guildId) {
+  const id = normalizeGuildId(guildId);
+  if (!id) return null;
 
-function load() {
-  if (stats === null) {
-    const hasMigrated = fs.existsSync(resolveDataPath(FILE_NAME));
-    stats = readJson(FILE_NAME, {});
-    if (!stats || typeof stats !== 'object') stats = {};
-
-    // Migration transparente : si data/stats.json n'existe pas encore mais
-    // que l'ancien stats.json à la racine oui, on reprend ses données.
-    if (!hasMigrated) {
-      const legacy = loadLegacyRootStats();
-      if (legacy) {
-        stats = { ...legacy, ...stats };
-        scheduleFlush();
+  if (!cache.has(id)) {
+    const raw = readGuildJson(id, FILES.STATS, {});
+    const counts = {};
+    if (raw && typeof raw === 'object') {
+      for (const [userId, value] of Object.entries(raw)) {
+        const n = Number(value);
+        if (/^\d{17,20}$/.test(userId) && Number.isFinite(n) && n > 0) counts[userId] = Math.floor(n);
       }
     }
+    cache.set(id, counts);
   }
-  return stats;
+
+  return cache.get(id);
 }
 
-function scheduleFlush() {
-  dirty = true;
+function scheduleFlush(guildId) {
+  dirtyGuilds.add(guildId);
   if (flushTimer) return;
+
   flushTimer = setTimeout(() => {
     flushTimer = null;
     flush();
@@ -58,30 +48,43 @@ function scheduleFlush() {
 }
 
 function flush() {
-  if (!dirty || stats === null) return;
-  dirty = false;
-  writeJson(FILE_NAME, stats);
+  for (const guildId of dirtyGuilds) {
+    const counts = cache.get(guildId);
+    if (counts) writeGuildJson(guildId, FILES.STATS, counts);
+  }
+  dirtyGuilds.clear();
 }
 
-function incrementMessageCount(userId) {
-  const data = load();
-  data[userId] = (data[userId] || 0) + 1;
-  scheduleFlush();
-  return data[userId];
+function incrementMessageCount(guildId, userId) {
+  const counts = load(guildId);
+  if (!counts) return 0;
+
+  counts[userId] = (counts[userId] || 0) + 1;
+  scheduleFlush(normalizeGuildId(guildId));
+  return counts[userId];
 }
 
-function getMessageCount(userId) {
-  const data = load();
-  return data[userId] || 0;
+function getMessageCount(guildId, userId) {
+  const counts = load(guildId);
+  return counts ? (counts[userId] || 0) : 0;
 }
 
-function getTopUsers(limit = 5) {
-  const data = load();
-  return Object.entries(data)
-    .sort((a, b) => b[1] - a[1])
+function getTopUsers(guildId, limit = 5) {
+  const counts = load(guildId);
+  if (!counts) return [];
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit);
 }
 
+/** Nombre total de membres suivis sur un serveur (affiché dans le panel). */
+function getTrackedUserCount(guildId) {
+  const counts = load(guildId);
+  return counts ? Object.keys(counts).length : 0;
+}
+
+/** Vidage immédiat du cache sur disque (SIGTERM/SIGINT). */
 function forceFlush() {
   if (flushTimer) {
     clearTimeout(flushTimer);
@@ -90,10 +93,21 @@ function forceFlush() {
   flush();
 }
 
+/** Réinitialise le cache mémoire (tests uniquement). */
+function resetCache() {
+  cache.clear();
+  dirtyGuilds.clear();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+}
+
 module.exports = {
-  FILE_NAME,
   incrementMessageCount,
   getMessageCount,
   getTopUsers,
+  getTrackedUserCount,
   forceFlush,
+  resetCache,
 };

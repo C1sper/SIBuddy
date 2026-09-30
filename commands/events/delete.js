@@ -6,6 +6,9 @@ const {
     ButtonStyle, MessageFlags } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../../services/eventsConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 /**
  * =============================================
  * COMMANDE EVENT-DELETE - Suppression d'événements
@@ -177,7 +180,7 @@ module.exports = {
             });
 
         } catch (error) {
-            console.error('Erreur lors de la suppression de l\'événement:', error);
+            log.error('Erreur lors de la suppression de l\'événement:', error);
             await interaction.editReply({
                 content: '❌ Une erreur est survenue lors de la suppression de l\'événement.'
             });
@@ -199,7 +202,7 @@ async function deleteEvent(interaction, event, eventsConfig, eventId) {
             const message = await channel.messages.fetch(event.messageId);
             await message.delete();
         } catch (error) {
-            console.log('Impossible de supprimer le message d\'événement:', error.message);
+            log.info('Impossible de supprimer le message d\'événement:', error.message);
         }
 
         // Supprimer l'événement Discord natif si il existe
@@ -208,7 +211,7 @@ async function deleteEvent(interaction, event, eventsConfig, eventId) {
                 const discordEvent = await interaction.guild.scheduledEvents.fetch(event.discordEventId);
                 await discordEvent.delete();
             } catch (error) {
-                console.log('Impossible de supprimer l\'événement Discord natif:', error.message);
+                log.info('Impossible de supprimer l\'événement Discord natif:', error.message);
             }
         }
 
@@ -243,10 +246,10 @@ async function deleteEvent(interaction, event, eventsConfig, eventId) {
             });
         }
 
-        console.log(`Événement supprimé: ${event.title} (${eventId}) par ${interaction.user.tag}`);
+        log.info(`Événement supprimé: ${event.title} (${eventId}) par ${interaction.user.tag}`);
 
     } catch (error) {
-        console.error('Erreur lors de la suppression effective:', error);
+        log.error('Erreur lors de la suppression effective:', error);
         
         const errorEmbed = new EmbedBuilder()
             .setColor(0xff0000)
@@ -305,7 +308,7 @@ async function notifyParticipants(interaction, event) {
                 const user = await interaction.client.users.fetch(userId);
                 await user.send({ embeds: [notificationEmbed] });
             } catch (error) {
-                console.log(`Impossible de notifier l'utilisateur ${userId}:`, error.message);
+                log.info(`Impossible de notifier l'utilisateur ${userId}:`, error.message);
             }
         });
 

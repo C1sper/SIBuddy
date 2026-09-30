@@ -1,27 +1,38 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits, MessageFlags } = require('discord.js')
+  PermissionFlagsBits,
+  MessageFlags
+} = require('discord.js')
 
 const devoirsService = require('../../services/devoirsService')
+const categoriesService = require('../../services/categoriesService')
 const { isFeatureEnabled } = require('../../services/guildConfig')
+const { respondWithDevoirs } = require('../../utils/devoirAutocomplete')
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('supprimer-devoir')
-    .setDescription('Supprime un devoir, examen ou projet via une liste.')
+    .setDescription('Supprime une date importante via une liste.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(['Guild'])
     .addStringOption(option =>
       option
         .setName('devoir')
-        .setDescription('Choisis le devoir/examen/projet à supprimer')
+        .setDescription('Choisis l’élément à supprimer')
         .setRequired(true)
         .setAutocomplete(true)
     ),
   emoji: '❌',
 
   async execute (interaction) {
+    if (!interaction.guildId) {
+      return interaction.reply({
+        content: '❌ Cette commande doit être utilisée dans un serveur.',
+        flags: MessageFlags.Ephemeral
+      })
+    }
+
     if (!isFeatureEnabled(interaction.guildId, 'homework')) {
       return interaction.reply({
         content: '❌ Le système de devoirs est désactivé sur ce serveur.',
@@ -29,14 +40,13 @@ module.exports = {
       })
     }
 
-    const value = interaction.options.getString('devoir', true)
-    const id = Number(value)
+    // La suppression est scopée au serveur : un ID venant d'ailleurs ne
+    // correspondra à aucun devoir de cette guild.
+    const result = devoirsService.deleteDevoir(
+      interaction.guildId,
+      interaction.options.getString('devoir', true)
+    )
 
-    if (isNaN(id)) {
-      return interaction.reply({ content: '❌ Devoir invalide.', flags: MessageFlags.Ephemeral })
-    }
-
-    const result = devoirsService.deleteDevoir(id)
     if (!result.ok) {
       return interaction.reply({
         content: `❌ ${result.error}`,
@@ -44,17 +54,17 @@ module.exports = {
       })
     }
 
-    const { devoir: target, cancelledCount } = result
-    const type = target.type || 'devoir'
+    const { devoir, cancelledCount } = result
+    const category = devoirsService.getDevoirCategory(interaction.guildId, devoir)
+    const subject = devoir.matiere ? `**${devoir.matiere}** → ${devoir.titre}` : `**${devoir.titre}**`
 
     const embed = new EmbedBuilder()
       .setColor(0xe74c3c)
       .setTitle('🗑️ Suppression effectuée')
       .setDescription(
-        `L'élément suivant a été supprimé :\n\n` +
-          `**${target.titre}**\n` +
-          `📅 ${target.date}\n` +
-          `🗂️ ${type}`
+        `L'élément suivant a été supprimé :\n\n${subject}\n` +
+          `📅 ${devoirsService.formatEcheance(devoir)}\n` +
+          `🗂️ ${categoriesService.formatCategory(category)}`
       )
       .addFields({
         name: '🔕 Rappels persistants',
@@ -62,43 +72,16 @@ module.exports = {
       })
       .setTimestamp()
       .setFooter({
-        text: 'Bot Discord 3SIB',
+        text: 'Bot Discord 4SIB',
         iconURL: interaction.client.user.displayAvatarURL()
       })
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral })
+
+    await interaction.client.refreshDevoirBoard?.(interaction.guildId)
   },
 
   async autocomplete (interaction) {
-    const focused = interaction.options.getFocused().toLowerCase()
-    const devoirs = devoirsService.readDevoirs()
-
-    devoirs.sort((a, b) => {
-      const da = new Date(a.date)
-      const db = new Date(b.date)
-      if (isNaN(da) || isNaN(db)) return 0
-      return da - db
-    })
-
-    const filtered = devoirs.filter((d, index) => {
-      const txt = `${index + 1} ${d.titre} ${d.date}`.toLowerCase()
-      return txt.includes(focused)
-    })
-
-    const choices = filtered.slice(0, 25).map((d, index) => {
-      const labelIndex = index + 1
-      const typeLabel =
-        d.type === 'examen'
-          ? 'Examen'
-          : d.type === 'projet'
-          ? 'Projet'
-          : 'Devoir'
-      return {
-        name: `${labelIndex}. [${typeLabel}] ${d.titre} – ${d.date}`,
-        value: String(d.id)
-      }
-    })
-
-    await interaction.respond(choices)
+    await respondWithDevoirs(interaction)
   }
 }

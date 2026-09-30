@@ -1,6 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('../services/eventsConfigStore');
 
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('events');
 /**
  * ================================================
  * GESTIONNAIRE D'INTERACTIONS - Système d'événements
@@ -84,7 +87,7 @@ async function handleEventInteraction(interaction) {
         }
 
     } catch (error) {
-        console.error('Erreur lors du traitement de l\'interaction d\'événement:', error);
+        log.error('Erreur lors du traitement de l\'interaction d\'événement:', error);
         await interaction.reply({
             content: '❌ Une erreur est survenue lors du traitement de votre demande.',
             flags: MessageFlags.Ephemeral
@@ -314,7 +317,7 @@ async function updateEventMessage(interaction, event) {
             components: [rsvpButtons]
         });
     } catch (error) {
-        console.error('Erreur lors de la mise à jour du message d\'événement:', error);
+        log.error('Erreur lors de la mise à jour du message d\'événement:', error);
     }
 }
 
@@ -336,7 +339,7 @@ async function notifyEventCreator(interaction, event, type) {
             await creator.send(message);
         }
     } catch (error) {
-        console.error('Erreur lors de la notification du créateur:', error);
+        log.error('Erreur lors de la notification du créateur:', error);
     }
 }
 

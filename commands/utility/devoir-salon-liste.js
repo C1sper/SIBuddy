@@ -5,7 +5,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('devoir-salon-liste')
     .setDescription(
-      'Définit le salon du tableau quotidien des devoirs/examens/projets.'
+      'Définit le salon du tableau des dates importantes.'
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(['Guild'])

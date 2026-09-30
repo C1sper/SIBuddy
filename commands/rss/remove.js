@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { readRssConfig, writeRssConfig } = require('../../services/rssConfigStore');
 
+const { createLogger } = require('../../utils/logger');
+
+const log = createLogger('commands');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('rss-remove')
@@ -79,10 +82,10 @@ module.exports = {
                 content: `**Flux RSS supprimé avec succès !**\n**Flux:** ${feedToRemove.customName}\n🔗 **URL:** ${feedToRemove.url}`
             });
 
-            console.log(`RSS supprimé: ${feedToRemove.customName} par ${interaction.user.tag}`);
+            log.info(`RSS supprimé: ${feedToRemove.customName} par ${interaction.user.tag}`);
 
         } catch (error) {
-            console.error('Erreur lors de la suppression RSS:', error);
+            log.error('Erreur lors de la suppression RSS:', error);
             await interaction.reply({
                 content: 'Une erreur s\'est produite lors de la suppression du flux RSS.',
                 flags: MessageFlags.Ephemeral

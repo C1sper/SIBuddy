@@ -1,6 +1,9 @@
 const { EmbedBuilder } = require('discord.js');
 const { readEventsConfig, writeEventsConfig } = require('./eventsConfigStore');
 
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('reminderSystem');
 /**
  * ===============================================
  * SYSTÈME DE RAPPELS AUTOMATIQUES - Événements
@@ -41,7 +44,7 @@ class ReminderSystem {
      * Initialise le système de rappels
      */
     initialize() {
-        console.log('🔔 Initialisation du système de rappels...');
+        log.info('Initialisation du système de rappels...');
         
         // Charger et programmer tous les rappels existants
         this.loadAndScheduleAllReminders();
@@ -51,7 +54,7 @@ class ReminderSystem {
             this.cleanupExpiredReminders();
         }, 60 * 60 * 1000); // 1 heure
         
-        console.log('✅ Système de rappels initialisé');
+        log.info('Système de rappels initialisé');
     }
 
     /**
@@ -66,7 +69,7 @@ class ReminderSystem {
             return;
         }
 
-        console.log(`📅 Programmation des rappels pour: ${eventData.title}`);
+        log.info(`Programmation des rappels pour: ${eventData.title}`);
 
         // Programmer chaque type de rappel
         this.reminderIntervals.forEach(interval => {
@@ -99,7 +102,7 @@ class ReminderSystem {
 
         this.activeTimers.set(reminderId, timer);
 
-        console.log(`⏰ Rappel programmé: ${eventData.title} - ${interval.label} (dans ${Math.round(delay / 1000 / 60)} minutes)`);
+        log.info(`⏰ Rappel programmé: ${eventData.title} - ${interval.label} (dans ${Math.round(delay / 1000 / 60)} minutes)`);
     }
 
     /**
@@ -112,7 +115,7 @@ class ReminderSystem {
             const currentEvent = eventsConfig.events[eventData.guildId]?.[eventData.id];
 
             if (!currentEvent) {
-                console.log(`Événement ${eventData.id} introuvable, rappel annulé`);
+                log.info(`Événement ${eventData.id} introuvable, rappel annulé`);
                 return;
             }
 
@@ -121,7 +124,7 @@ class ReminderSystem {
             const now = new Date();
 
             if (eventDate <= now) {
-                console.log(`Événement ${currentEvent.title} déjà passé, rappel annulé`);
+                log.info(`Événement ${currentEvent.title} déjà passé, rappel annulé`);
                 return;
             }
 
@@ -131,7 +134,7 @@ class ReminderSystem {
             ];
 
             if (participantsToRemind.length === 0) {
-                console.log(`Aucun participant à rappeler pour ${currentEvent.title}`);
+                log.info(`Aucun participant à rappeler pour ${currentEvent.title}`);
                 return;
             }
 
@@ -144,10 +147,10 @@ class ReminderSystem {
             // Envoyer aussi un rappel dans le canal de l'événement
             await this.sendChannelReminder(currentEvent, interval);
 
-            console.log(`✅ Rappel envoyé pour ${currentEvent.title} (${interval.label}) à ${participantsToRemind.length} participants`);
+            log.info(`Rappel envoyé pour ${currentEvent.title} (${interval.label}) à ${participantsToRemind.length} participants`);
 
         } catch (error) {
-            console.error('Erreur lors de l\'envoi du rappel:', error);
+            log.error('Erreur lors de l\'envoi du rappel:', error);
         }
     }
 
@@ -245,7 +248,7 @@ class ReminderSystem {
                     const user = await this.client.users.fetch(userId);
                     await user.send({ embeds: [embed] });
                 } catch (error) {
-                    console.log(`Impossible d'envoyer le rappel à ${userId}:`, error.message);
+                    log.info(`Impossible d'envoyer le rappel à ${userId}:`, error.message);
                 }
             });
 
@@ -285,7 +288,7 @@ class ReminderSystem {
                 });
             }
         } catch (error) {
-            console.error('Erreur lors de l\'envoi du rappel dans le canal:', error);
+            log.error('Erreur lors de l\'envoi du rappel dans le canal:', error);
         }
     }
 
@@ -330,7 +333,7 @@ class ReminderSystem {
             });
         });
 
-        console.log(`📅 ${scheduledCount} événements programmés pour les rappels`);
+        log.info(`${scheduledCount} événements programmés pour les rappels`);
     }
 
     /**
@@ -350,7 +353,7 @@ class ReminderSystem {
             this.activeTimers.delete(reminderId);
         });
 
-        console.log(`🚫 ${timersToCancel.length} rappels annulés pour l'événement ${eventId}`);
+        log.info(`🚫 ${timersToCancel.length} rappels annulés pour l'événement ${eventId}`);
     }
 
     /**
@@ -380,7 +383,7 @@ class ReminderSystem {
 
         if (cleanedCount > 0) {
             this.saveEventsConfig(eventsConfig);
-            console.log(`🧹 ${cleanedCount} événements expirés nettoyés`);
+            log.info(`🧹 ${cleanedCount} événements expirés nettoyés`);
         }
     }
 
@@ -394,7 +397,7 @@ class ReminderSystem {
         // Programmer les nouveaux rappels
         this.scheduleReminders(eventData);
         
-        console.log(`🔄 Rappels mis à jour pour ${eventData.title}`);
+        log.info(`Rappels mis à jour pour ${eventData.title}`);
     }
 
     // Fonctions utilitaires

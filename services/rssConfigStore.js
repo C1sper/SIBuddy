@@ -1,44 +1,75 @@
 // services/rssConfigStore.js
-// Accès centralisé à la configuration RSS (data/rss-config.json), migrée
-// depuis l'ancien rss-config.json à la racine du repo.
-const fs = require('fs');
-const path = require('path');
-const { readJson, writeJson, resolveDataPath } = require('./dataStore');
+// Configuration RSS, stockée par serveur : data/guilds/<guildId>/rss-config.json
+//
+// Ce module expose volontairement la MÊME forme agrégée qu'avant la v2 —
+// { [guildId]: { [feedId]: feedConfig } } — pour que /rss-setup, /rss-list et
+// /rss-remove continuent de fonctionner sans modification. L'agrégation et
+// l'éclatement vers les fichiers par serveur sont entièrement internes.
+const { FILES, readGuildJson, writeGuildJson, listGuildIds, normalizeGuildId } = require('./guildStore');
 
-const FILE_NAME = 'rss-config.json';
-const LEGACY_ROOT_PATH = path.join(__dirname, '..', 'rss-config.json');
-
-function loadLegacyRoot() {
-  if (!fs.existsSync(LEGACY_ROOT_PATH)) return null;
-  try {
-    const raw = fs.readFileSync(LEGACY_ROOT_PATH, 'utf-8');
-    if (!raw.trim()) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch (e) {
-    console.error('[rssConfigStore] Impossible de lire l\'ancien rss-config.json à la racine:', e.message);
-    return null;
-  }
+function readGuildFeeds(guildId) {
+  const raw = readGuildJson(guildId, FILES.RSS_CONFIG, { feeds: {} });
+  const feeds = raw && typeof raw.feeds === 'object' && raw.feeds ? raw.feeds : {};
+  return { ...feeds };
 }
 
+function writeGuildFeeds(guildId, feeds) {
+  return writeGuildJson(guildId, FILES.RSS_CONFIG, { version: 2, feeds: feeds || {} });
+}
+
+/** Vue agrégée { [guildId]: { [feedId]: config } } de tous les serveurs. */
 function readRssConfig() {
-  const alreadyMigrated = fs.existsSync(resolveDataPath(FILE_NAME));
-  let data = readJson(FILE_NAME, {});
-  if (!data || typeof data !== 'object') data = {};
-
-  if (!alreadyMigrated) {
-    const legacy = loadLegacyRoot();
-    if (legacy) {
-      data = { ...legacy, ...data };
-      writeJson(FILE_NAME, data);
-    }
+  const config = {};
+  for (const guildId of listGuildIds()) {
+    const feeds = readGuildFeeds(guildId);
+    if (Object.keys(feeds).length > 0) config[guildId] = feeds;
   }
-
-  return data;
+  return config;
 }
 
+/**
+ * Réécrit la configuration RSS à partir de la vue agrégée.
+ * Un serveur absent de l'objet (cas de /rss-remove qui supprime la clé quand
+ * le dernier flux part) voit ses flux vidés — sans que son dossier de données
+ * ni le reste de sa configuration soient touchés.
+ */
 function writeRssConfig(config) {
-  writeJson(FILE_NAME, config);
+  const incoming = config && typeof config === 'object' ? config : {};
+  const guildIds = new Set([...listGuildIds(), ...Object.keys(incoming)]);
+
+  for (const guildId of guildIds) {
+    if (!normalizeGuildId(guildId)) continue;
+
+    const feeds = incoming[guildId] && typeof incoming[guildId] === 'object' ? incoming[guildId] : {};
+    const current = readGuildFeeds(guildId);
+
+    // N'écrit que si le contenu change réellement.
+    if (JSON.stringify(current) === JSON.stringify(feeds)) continue;
+    writeGuildFeeds(guildId, feeds);
+  }
 }
 
-module.exports = { readRssConfig, writeRssConfig, FILE_NAME };
+// ---------------------------------------------------------------------------
+// État de lecture des flux (articles déjà vus), également par serveur
+// ---------------------------------------------------------------------------
+
+function readRssState(guildId) {
+  const raw = readGuildJson(guildId, FILES.RSS_STATE, { feeds: {} });
+  if (!raw || typeof raw !== 'object' || typeof raw.feeds !== 'object' || !raw.feeds) {
+    return { feeds: {} };
+  }
+  return raw;
+}
+
+function writeRssState(guildId, state) {
+  return writeGuildJson(guildId, FILES.RSS_STATE, { version: 2, feeds: state?.feeds || {} });
+}
+
+module.exports = {
+  readRssConfig,
+  writeRssConfig,
+  readGuildFeeds,
+  writeGuildFeeds,
+  readRssState,
+  writeRssState,
+};

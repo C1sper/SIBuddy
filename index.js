@@ -4,6 +4,9 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { createLogger } = require('./utils/logger');
+
+const log = createLogger('bot');
 
 // 1) Création du client avec les intents nécessaires
 const client = new Client({
@@ -20,13 +23,14 @@ client.commands = new Collection();
 
 // 2) Charger automatiquement tous les events du dossier ./events
 const eventsPath = path.join(__dirname, 'events');
+let loadedEvents = 0;
 if (fs.existsSync(eventsPath)) {
   const eventFiles = fs.readdirSync(eventsPath).filter(f => f.endsWith('.js'));
 
   for (const file of eventFiles) {
     const event = require(path.join(eventsPath, file));
     if (!event?.name || typeof event.execute !== 'function') {
-      console.log(`⚠️ Event invalide: ${file} (doit exporter { name, execute, once? })`);
+      log.warn(`Event invalide : ${file} (doit exporter { name, execute, once? })`);
       continue;
     }
 
@@ -36,12 +40,16 @@ if (fs.existsSync(eventsPath)) {
       client.on(event.name, (...args) => event.execute(...args));
     }
 
-    console.log(`✅ Événement chargé: ${event.name}`);
+    log.debug(`Événement chargé : ${event.name}`);
+    loadedEvents++;
   }
+
+  log.info(`${loadedEvents} événement(s) chargé(s).`);
 }
 
 // 3) Charger les commandes (slash) depuis ./commands/**
 const foldersPath = path.join(__dirname, 'commands');
+let loadedCommands = 0;
 if (fs.existsSync(foldersPath)) {
   const commandFolders = fs.readdirSync(foldersPath);
 
@@ -57,21 +65,24 @@ if (fs.existsSync(foldersPath)) {
 
       if (command?.data?.name && typeof command.execute === 'function') {
         client.commands.set(command.data.name, command);
-        console.log(`✅ Commande chargée: ${command.data.name}`);
+        loadedCommands++;
+        log.debug(`Commande chargée : ${command.data.name}`);
       } else {
-        console.log(`⚠️ La commande ${filePath} manque "data.name" ou "execute".`);
+        log.warn(`Commande ignorée : ${filePath} manque "data.name" ou "execute".`);
       }
     }
   }
+
+  log.info(`${loadedCommands} commande(s) chargée(s).`);
 }
 
 // 4) Gestion des erreurs
 process.on('unhandledRejection', error => {
-  console.error('Unhandled promise rejection:', error);
+  log.error('Unhandled promise rejection:', error);
 });
 
 process.on('uncaughtException', error => {
-  console.error('Uncaught exception:', error);
+  log.error('Uncaught exception:', error);
   process.exit(1);
 });
 
@@ -81,7 +92,7 @@ let shuttingDown = false;
 function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`🛑 Signal ${signal} reçu, arrêt en cours...`);
+  log.info(`Signal ${signal} reçu, arrêt en cours...`);
   statsStore.forceFlush();
   client.destroy();
   process.exit(0);

@@ -14,9 +14,15 @@ const {
 
 const { ensureGuildConfig, updateGuildConfig } = require('../services/guildConfig');
 const devoirsService = require('../services/devoirsService');
+const categoriesService = require('../services/categoriesService');
+const { ensureGuildInitialized } = require('../services/guildLifecycle');
 const feurPanelHandler = require('./feurPanelHandler');
 const homeworkPanelHandler = require('./homeworkPanelHandler');
+const categoriesPanelHandler = require('./categoriesPanelHandler');
 
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('adminPanel');
 const FEATURE_LABELS = {
   feur: 'Réponses "feur"',
   homework: 'Devoirs',
@@ -25,8 +31,15 @@ const FEATURE_LABELS = {
   recurringEvents: 'Événements récurrents',
 };
 
+/**
+ * Contrôle rejoué à CHAQUE interaction du panel (bouton, menu, modal), et pas
+ * seulement à l'ouverture : un bouton d'un vieux panel encore affiché est donc
+ * revérifié. Exige aussi que la guild soit résolue, car toutes les vues
+ * lisent les données via `interaction.guild.id`.
+ */
 function hasAdminAccess(interaction) {
-  return Boolean(interaction.inGuild()) && Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
+  if (!interaction.inGuild() || !interaction.guild) return false;
+  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
 }
 
 async function denyAccess(interaction) {
@@ -40,9 +53,14 @@ async function denyAccess(interaction) {
 }
 
 function buildMainPanel(guild) {
+  // Garantit que data/guilds/<guildId>/ existe dès la première ouverture du panel.
+  ensureGuildInitialized(guild.id);
+
   const cfg = ensureGuildConfig(guild.id);
   const devoirsCfg = devoirsService.getGuildConfig(guild.id);
-  const devoirsCount = devoirsService.listDevoirs({ guildId: guild.id }).length;
+  const devoirsCount = devoirsService.getUpcoming(guild.id).length;
+  const categories = categoriesService.listCategories(guild.id);
+  const activeCategories = categories.filter((c) => c.enabled).length;
 
   const stateIcon = (v) => (v ? '🟢 Activé' : '🔴 Désactivé');
 
@@ -64,7 +82,14 @@ function buildMainPanel(guild) {
       },
       {
         name: '📚 Devoirs',
-        value: `Éléments actifs : **${devoirsCount}**\nSalon tableau : ${devoirsCfg.boardChannelId ? `<#${devoirsCfg.boardChannelId}>` : 'non configuré'}`,
+        value:
+          `Dates à venir : **${devoirsCount}**\n` +
+          `Salon tableau : ${devoirsCfg.boardChannelId ? `<#${devoirsCfg.boardChannelId}>` : 'non configuré'}`,
+        inline: true,
+      },
+      {
+        name: '📂 Catégories',
+        value: `**${activeCategories}** active(s) sur **${categories.length}**`,
         inline: true,
       },
     )
@@ -84,8 +109,9 @@ function buildMainPanel(guild) {
 
   const rowSelect = new ActionRowBuilder().addComponents(featureSelect);
   const rowButtons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('admin:feur:open').setLabel('Feur').setEmoji('🎲').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('admin:hw:open').setLabel('Devoirs').setEmoji('📚').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('admin:cat:open').setLabel('Catégories').setEmoji('📂').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('admin:feur:open').setLabel('Feur').setEmoji('🎲').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('admin:home').setLabel('Actualiser').setEmoji('🔄').setStyle(ButtonStyle.Primary),
   );
 
@@ -145,10 +171,14 @@ async function route(interaction) {
       return await homeworkPanelHandler.route(interaction, parts.slice(2));
     }
 
+    if (section === 'cat') {
+      return await categoriesPanelHandler.route(interaction, parts.slice(2));
+    }
+
     // customId admin: inconnu / panel expiré -> retour à l'accueil
     return await showMainPanel(interaction);
   } catch (error) {
-    console.error(`[adminPanelHandler] Erreur sur ${customId}:`, error);
+    log.error(`Erreur sur ${customId}:`, error);
     const errorPayload = { content: '❌ Une erreur est survenue. Réessaie ou relance `/admin-panel`.', flags: MessageFlags.Ephemeral };
     try {
       if (interaction.deferred || interaction.replied) {

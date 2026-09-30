@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    container_name: 3sib-discord-bot
+    container_name: 4sib-discord-bot
     restart: unless-stopped
     env_file:
       - .env
@@ -12,5 +12,27 @@ services:
     volumes:
       # Persistance des données du bot (devoirs, config par serveur, stats, RSS...)
       # entre les recreate/rebuild du conteneur.
+      #
+      # Depuis le schéma v2, les données sont rangées par serveur Discord dans
+      # data/guilds/<guildId>/. Ce montage unique les couvre toutes : aucun
+      # volume supplémentaire n'est à ajouter quand le bot rejoint un serveur.
+      # Le dossier hôte doit être accessible en écriture à l'UID 1000
+      # (utilisateur "node" du conteneur), y compris pour créer des sous-dossiers.
+      #
+      # NE PAS renommer ce chemin en "4SI2" pour l'harmoniser avec le nom du
+      # bot : c'est un chemin RÉEL sur le NAS. Le changer sans déplacer le
+      # dossier au préalable ferait démarrer le bot sur un répertoire vide,
+      # comme s'il avait perdu tous les devoirs.
       - /volume2/docker/ESGI-3SI2-TEAM2/data:/app/data
     stop_grace_period: 10s
+    # PAS de bloc "logging:" ici, volontairement.
+    #
+    # Une rotation par conteneur (json-file + max-size/max-file) vide l'onglet
+    # Journal de Container Manager sur Synology DSM : `docker logs` continue de
+    # fonctionner en SSH, mais l'interface n'affiche plus rien. Vérifié sur ce
+    # NAS — retirer ce bloc rétablit l'affichage.
+    #
+    # Le volume de logs de ce bot est de l'ordre de quelques Mo par an au
+    # niveau INFO ; une rotation n'est donc pas nécessaire. Si elle le devient,
+    # la configurer au niveau du démon plutôt qu'ici :
+    #   /var/packages/ContainerManager/etc/dockerd.json

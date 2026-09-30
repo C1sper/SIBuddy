@@ -1,24 +1,25 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits, MessageFlags } = require('discord.js')
+  PermissionFlagsBits,
+  MessageFlags
+} = require('discord.js')
 
 const devoirsService = require('../../services/devoirsService')
-const { parseDateYYYYMMDD } = require('../../services/dateParser')
+const categoriesService = require('../../services/categoriesService')
 const { isFeatureEnabled } = require('../../services/guildConfig')
-
-const { TYPE_LABELS } = devoirsService
+const { respondWithDevoirs } = require('../../utils/devoirAutocomplete')
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('modifier-date-devoir')
-    .setDescription('Modifie la date limite d’un devoir, examen ou projet.')
+    .setDescription('Modifie la date limite d’une date importante.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(['Guild'])
     .addStringOption(option =>
       option
         .setName('devoir')
-        .setDescription('Choisis le devoir/examen/projet à modifier')
+        .setDescription('Choisis l’élément à modifier')
         .setRequired(true)
         .setAutocomplete(true)
     )
@@ -27,10 +28,23 @@ module.exports = {
         .setName('date')
         .setDescription('Nouvelle date limite (format AAAA-MM-JJ)')
         .setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName('heure')
+        .setDescription('Nouvelle heure limite (HH:mm). Par défaut : minuit.')
+        .setRequired(false)
     ),
   emoji: '🗓️',
 
   async execute (interaction) {
+    if (!interaction.guildId) {
+      return interaction.reply({
+        content: '❌ Cette commande doit être utilisée dans un serveur.',
+        flags: MessageFlags.Ephemeral
+      })
+    }
+
     if (!isFeatureEnabled(interaction.guildId, 'homework')) {
       return interaction.reply({
         content: '❌ Le système de devoirs est désactivé sur ce serveur.',
@@ -38,15 +52,17 @@ module.exports = {
       })
     }
 
-    const devoirIdStr = interaction.options.getString('devoir', true)
-    const newDateStr = interaction.options.getString('date', true)
+    const devoirId = interaction.options.getString('devoir', true)
+    const patch = { date: interaction.options.getString('date', true) }
 
-    const devoirId = Number(devoirIdStr)
-    if (isNaN(devoirId)) {
-      return interaction.reply({ content: '❌ Devoir invalide.', flags: MessageFlags.Ephemeral })
-    }
+    const heure = interaction.options.getString('heure')
+    if (heure !== null) patch.heure = heure
 
-    const result = devoirsService.updateDevoirDate(devoirId, newDateStr)
+    const devoirsBefore = devoirsService.readDevoirs(interaction.guildId)
+    const before = devoirsBefore.find(d => devoirsService.sameId(d.id, devoirId))
+    const oldDate = before ? devoirsService.formatEcheance(before) : null
+
+    const result = devoirsService.updateDevoir(interaction.guildId, devoirId, patch)
     if (!result.ok) {
       return interaction.reply({
         content: `❌ ${result.error}`,
@@ -54,60 +70,43 @@ module.exports = {
       })
     }
 
-    const { devoir: updatedDevoir, oldDate, reminders } = result
-    const typeLabel = TYPE_LABELS[updatedDevoir.type] || 'Devoir'
+    const { devoir, reminders } = result
+    const category = devoirsService.getDevoirCategory(interaction.guildId, devoir)
+    const subject = devoir.matiere ? `**${devoir.matiere}** → ${devoir.titre}` : `**${devoir.titre}**`
 
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
       .setTitle('🗓️ Date modifiée')
       .setDescription(
-        `La date du ${typeLabel.toLowerCase()} **${updatedDevoir.titre}** a été mise à jour.`
+        `La date de ${subject} (${categoriesService.formatCategory(category)}) a été mise à jour.`
       )
       .addFields(
         { name: 'Ancienne date', value: oldDate || 'Inconnue', inline: true },
-        { name: 'Nouvelle date', value: updatedDevoir.date, inline: true },
+        {
+          name: 'Nouvelle date',
+          value: devoirsService.formatEcheance(devoir),
+          inline: true
+        },
         {
           name: '🔔 Rappels persistants',
           value:
             reminders.length > 0
-              ? `Recréés: ${reminders.length} rappel(s)`
+              ? `Anciens rappels annulés, ${reminders.length} nouveau(x) rappel(s) programmé(s).`
               : 'Aucun (date trop proche ou passée, ou salon d’origine manquant)'
         }
       )
       .setTimestamp()
       .setFooter({
-        text: 'Bot Discord 3SIB',
+        text: 'Bot Discord 4SIB',
         iconURL: interaction.client.user.displayAvatarURL()
       })
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral })
+
+    await interaction.client.refreshDevoirBoard?.(interaction.guildId)
   },
 
-  // Autocomplete pour choisir le devoir
   async autocomplete (interaction) {
-    const focused = interaction.options.getFocused().toLowerCase()
-    const guildId = interaction.guildId
-
-    const devoirs = devoirsService.readDevoirs()
-      .filter(d => d.guildId === guildId)
-      .sort((a, b) => {
-        const da = parseDateYYYYMMDD(a.date)
-        const db = parseDateYYYYMMDD(b.date)
-        if (!da || !db) return 0
-        return da - db
-      })
-
-    const choices = devoirs
-      .filter(d => (d.titre || '').toLowerCase().includes(focused))
-      .slice(0, 25)
-      .map((d, index) => {
-        const typeLabel = TYPE_LABELS[d.type] || 'Devoir'
-        return {
-          name: `${index + 1}. [${typeLabel}] ${d.titre} – ${d.date}`,
-          value: String(d.id)
-        }
-      })
-
-    await interaction.respond(choices)
+    await respondWithDevoirs(interaction)
   }
 }

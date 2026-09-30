@@ -1,28 +1,31 @@
 // services/remindersRunner.js
+// Envoie les rappels persistants arrivés à échéance (salon + DM).
+// Chaque rappel porte son guildId : la configuration (rôle mentionné, salon
+// de rappels) et la catégorie sont toujours résolues sur le bon serveur.
 const { EmbedBuilder } = require('discord.js');
 
 const { getPendingDue, markSent, cleanupOldSent } = require('./remindersStore');
-const { readConfig } = require('./devoirsService');
-const { isFeatureEnabled } = require('./guildConfig');
+const { getDevoirsConfig, isFeatureEnabled } = require('./guildConfig');
+const categoriesService = require('./categoriesService');
+const devoirsService = require('./devoirsService');
 
-const TYPE_LABELS = {
-  devoir: 'Devoir',
-  examen: 'Examen',
-  projet: 'Projet',
-};
+const { createLogger } = require('../utils/logger');
 
-const IMPORTANCE_LABELS = {
-  faible: 'Peu important',
-  important: 'Important',
-  tres_important: 'Très important',
-};
+const log = createLogger('remindersRunner');
+const { IMPORTANCE_LABELS } = devoirsService;
 
-function getGuildConfig(config, guildId) {
-  const g = config?.[guildId] || {};
-  return {
-    roleId: g.roleId || null,
-    reminderChannelId: g.reminderChannelId || null,
-  };
+/** Libellé de catégorie du rappel, résolu au moment de l'envoi. */
+function resolveCategoryLabel(reminder) {
+  const category =
+    categoriesService.getCategory(reminder.guildId, reminder.categoryId) ||
+    categoriesService.resolveCategory(reminder.guildId, reminder.type);
+  return category ? categoriesService.formatCategory(category) : 'Devoir';
+}
+
+/** "Cryptographie → TP RSA" ou "TP RSA" si aucune matière. */
+function formatSubject(reminder) {
+  const titre = reminder.title || 'Sans titre';
+  return reminder.matiere ? `**${reminder.matiere}** → ${titre}` : `**${titre}**`;
 }
 
 function buildMention(cfg) {
@@ -36,65 +39,115 @@ function buildAllowedMentions(cfg) {
 
 function getReminderColor(importance, kind) {
   const imp = importance || 'important';
-  let color =
-    imp === 'tres_important'
-      ? 0xe74c3c
-      : imp === 'faible'
-      ? 0x95a5a6
-      : 0xf39c12;
-
+  let color = imp === 'tres_important' ? 0xe74c3c : imp === 'faible' ? 0x95a5a6 : 0xf39c12;
   if (kind === '7d' && imp !== 'tres_important') color = 0xf1c40f;
   return color;
 }
 
-function buildDescription(r) {
-  const typeLabel = TYPE_LABELS[r.type] || 'Devoir';
+function buildDescription(reminder) {
+  const subject = formatSubject(reminder);
+  const echeance = devoirsService.formatEcheance(reminder);
 
-  if (r.kind === '7d') {
-    return `Le ${typeLabel.toLowerCase()} **${r.title}** est à rendre dans **7 jours** (le ${r.date}).`;
+  if (reminder.kind === '7d') {
+    return `${subject} est à rendre dans **7 jours** (le ${echeance}).`;
   }
-  if (r.kind === '1d-morning' || r.kind === '1d-evening') {
-    return `Le ${typeLabel.toLowerCase()} **${r.title}** est à rendre **demain** (${r.date}).`;
+  if (reminder.kind === '1d-morning' || reminder.kind === '1d-evening') {
+    return `${subject} est à rendre **demain** (${echeance}).`;
   }
-  if (r.kind?.startsWith('custom-')) {
-    return `Rappel pour le ${typeLabel.toLowerCase()} **${r.title}** (échéance le ${r.date}).`;
-  }
-  return `Rappel pour le ${typeLabel.toLowerCase()} **${r.title}** (échéance le ${r.date}).`;
+  return `Rappel pour ${subject} (échéance le ${echeance}).`;
 }
 
 /**
- * Option A:
- * - salon = cfg.reminderChannelId si défini
- * - sinon fallback = reminder.sourceChannelId
- * - sinon fallback compat = reminder.channelId (anciens reminders)
+ * Salon cible :
+ * - le salon de rappels configuré pour le serveur s'il existe,
+ * - sinon le salon d'origine du devoir,
+ * - sinon `channelId` (compatibilité avec les tout premiers rappels).
  */
 function resolveTargetChannelId(cfg, reminder) {
   return cfg.reminderChannelId || reminder.sourceChannelId || reminder.channelId || null;
 }
 
-function buildDMEmbed(r) {
-  const typeLabel = TYPE_LABELS[r.type] || 'Devoir';
-  const impKey = r.importance || 'important';
-  const impLabel = IMPORTANCE_LABELS[impKey] || 'Important';
+function buildDMEmbed(reminder) {
+  const echeance = devoirsService.formatEcheance(reminder);
 
   return new EmbedBuilder()
     .setColor(0x3498db)
-    .setTitle(`🔔 Rappel (DM) — ${typeLabel}`)
+    .setTitle(`🔔 Rappel (DM) — ${resolveCategoryLabel(reminder)}`)
     .setDescription(
-      `Tu m’avais demandé un rappel pour :\n\n📘 **${r.title || 'Sans titre'}**\n📅 ${r.date || 'Non définie'}\n📝 ${r.description || 'Aucune'}`
+      'Tu m’avais demandé un rappel pour :\n\n' +
+      `📘 ${formatSubject(reminder)}\n📅 ${echeance}\n📝 ${reminder.description || 'Aucune'}`,
     )
-    .addFields({ name: '📍 Importance', value: impLabel, inline: true })
+    .addFields({
+      name: '📍 Importance',
+      value: IMPORTANCE_LABELS[reminder.importance || 'important'] || 'Important',
+      inline: true,
+    })
     .setTimestamp();
 }
 
+async function deliverDM(client, reminder) {
+  if (!reminder.userId) {
+    log.warn(`Rappel DM sans userId (id=${reminder.id})`);
+    return;
+  }
+
+  const user = await client.users.fetch(reminder.userId).catch(() => null);
+  if (!user) {
+    log.warn(`Utilisateur introuvable (${reminder.userId}) pour le rappel DM ${reminder.id}`);
+    return;
+  }
+
+  await user.send({ embeds: [buildDMEmbed(reminder)] });
+  log.info(`Rappel DM (${reminder.kind}) envoyé à ${user.tag} pour ${reminder.title}`);
+}
+
+async function deliverChannel(client, reminder) {
+  const cfg = getDevoirsConfig(reminder.guildId);
+  const targetChannelId = resolveTargetChannelId(cfg, reminder);
+
+  if (!targetChannelId) {
+    log.warn(`Rappel sans salon cible (guild=${reminder.guildId}, id=${reminder.id})`);
+    return;
+  }
+
+  const channel = await client.channels.fetch(targetChannelId).catch(() => null);
+  if (!channel || typeof channel.send !== 'function') {
+    log.warn(`Salon introuvable (${targetChannelId}) pour le rappel ${reminder.id}`);
+    return;
+  }
+
+  const importance = reminder.importance || 'important';
+  const echeance = devoirsService.formatEcheance(reminder);
+
+  const embed = new EmbedBuilder()
+    .setColor(getReminderColor(importance, reminder.kind))
+    .setTitle(`📢 Rappel — ${resolveCategoryLabel(reminder)}`)
+    .setDescription(buildDescription(reminder))
+    .addFields(
+      { name: '📘 Intitulé', value: `${reminder.matiere ? `${reminder.matiere} — ` : ''}${reminder.title || 'Sans titre'}` },
+      { name: '📅 Date limite', value: echeance, inline: true },
+      { name: '📍 Importance', value: IMPORTANCE_LABELS[importance] || 'Important', inline: true },
+      { name: '📝 Description', value: reminder.description || 'Aucune' },
+    )
+    .setTimestamp();
+
+  await channel.send({
+    content: buildMention(cfg),
+    embeds: [embed],
+    allowedMentions: buildAllowedMentions(cfg),
+  });
+
+  log.info(`Rappel (${reminder.kind}) envoyé pour ${reminder.title} dans #${targetChannelId}`);
+}
+
 function startRemindersRunner(client, { intervalMs = 30_000 } = {}) {
-  console.log(`⏱️ RemindersRunner démarré (interval ${intervalMs}ms)`);
+  log.info(`RemindersRunner démarré (interval ${intervalMs}ms)`);
 
   setInterval(() => {
     try {
       cleanupOldSent(30);
     } catch (e) {
-      console.error('cleanupOldSent error:', e);
+      log.error('cleanupOldSent error:', e.message);
     }
   }, 6 * 60 * 60 * 1000);
 
@@ -103,89 +156,29 @@ function startRemindersRunner(client, { intervalMs = 30_000 } = {}) {
       const due = getPendingDue(Date.now());
       if (due.length === 0) return;
 
-      const config = readConfig();
+      for (const reminder of due) {
+        // Rappels suspendus si les devoirs sont désactivés sur ce serveur :
+        // ils restent "pending" et repartiront à la réactivation.
+        if (!isFeatureEnabled(reminder.guildId, 'homework')) continue;
 
-      for (const r of due) {
-        // Rappels suspendus si le système de devoirs est désactivé pour cette guild
-        // (ils restent "pending" et repartiront normalement une fois réactivé).
-        if (r.guildId && !isFeatureEnabled(r.guildId, 'homework')) continue;
-
-        // ✅ 1) Rappels en DM (persistants)
-        if (r.delivery === 'dm') {
-          try {
-            if (!r.userId) {
-              console.warn(`⚠️ Reminder DM sans userId (id=${r.id})`);
-              markSent(r.id);
-              continue;
-            }
-
-            const user = await client.users.fetch(r.userId).catch(() => null);
-            if (!user) {
-              console.warn(`⚠️ Utilisateur introuvable (${r.userId}) pour reminder DM ${r.id}`);
-              markSent(r.id);
-              continue;
-            }
-
-            await user.send({ embeds: [buildDMEmbed(r)] });
-            console.log(`📩 Rappel DM (${r.kind}) envoyé à ${user.tag} pour ${r.title}`);
-            markSent(r.id);
-          } catch (e) {
-            console.error("Erreur envoi DM:", e);
-            // Pour éviter retry infini (et spam), on marque sent
-            markSent(r.id);
+        try {
+          if (reminder.delivery === 'dm') {
+            await deliverDM(client, reminder);
+          } else {
+            await deliverChannel(client, reminder);
           }
-          continue;
+        } catch (e) {
+          // On marque quand même comme envoyé pour ne pas boucler indéfiniment
+          // (salon supprimé, DM fermés, permissions retirées...).
+          log.error(`Erreur d'envoi du rappel ${reminder.id}:`, e.message);
         }
 
-        // ✅ 2) Rappels en salon (comportement existant)
-        const cfg = getGuildConfig(config, r.guildId);
-
-        const targetChannelId = resolveTargetChannelId(cfg, r);
-        if (!targetChannelId) {
-          console.warn(`⚠️ Reminder sans salon cible (guild=${r.guildId}, id=${r.id})`);
-          markSent(r.id);
-          continue;
-        }
-
-        const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-        if (!channel) {
-          console.warn(`⚠️ Salon introuvable (${targetChannelId}) pour reminder ${r.id}`);
-          markSent(r.id);
-          continue;
-        }
-
-        const typeLabel = TYPE_LABELS[r.type] || 'Devoir';
-        const impKey = r.importance || 'important';
-        const impLabel = IMPORTANCE_LABELS[impKey] || 'Important';
-
-        const embed = new EmbedBuilder()
-          .setColor(getReminderColor(impKey, r.kind))
-          .setTitle(`📢 Rappel ${typeLabel}`)
-          .setDescription(buildDescription(r))
-          .addFields(
-            { name: '📘 Titre', value: r.title || 'Sans titre' },
-            { name: '📅 Date limite', value: r.date || 'Non définie' },
-            { name: '📍 Importance', value: impLabel, inline: true },
-            { name: '📝 Description', value: r.description || 'Aucune' }
-          )
-          .setTimestamp();
-
-        const mention = buildMention(cfg);
-        const allowedMentions = buildAllowedMentions(cfg);
-
-        await channel.send({
-          content: mention,
-          embeds: [embed],
-          allowedMentions,
-        });
-
-        console.log(`Rappel (${r.kind}) envoyé pour ${r.title} dans #${targetChannelId}`);
-        markSent(r.id);
+        markSent(reminder.guildId, reminder.id);
       }
     } catch (err) {
-      console.error('RemindersRunner error:', err);
+      log.error('RemindersRunner error:', err);
     }
   }, intervalMs);
 }
 
-module.exports = { startRemindersRunner };
+module.exports = { startRemindersRunner, buildDescription, formatSubject };
